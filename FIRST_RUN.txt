@@ -1,0 +1,33 @@
+TouchPane - First Launch / 首次运行 / 首次執行
+=================================================
+
+ENGLISH
+1. Drag TouchPane.app into the Applications folder.
+2. Try to open TouchPane once.
+3. Open System Settings > Privacy & Security, then click Open Anyway.
+4. Allow TouchPane under Accessibility and Input Monitoring.
+5. Quit and reopen TouchPane after both permissions are enabled.
+
+This free build uses a stable self-signed certificate and is not notarized by
+Apple. Keep future versions in /Applications and replace the existing app so
+macOS can preserve the permissions when the app identity is unchanged.
+
+简体中文
+1. 把 TouchPane.app 拖到“应用程序”文件夹。
+2. 先尝试打开一次 TouchPane。
+3. 打开“系统设置 > 隐私与安全性”，点击“仍要打开”。
+4. 在“辅助功能”和“输入监控”中允许 TouchPane。
+5. 两项权限都启用后，退出并重新打开 TouchPane。
+
+此免费版本使用固定的自签名证书，没有经过 Apple 公证。请把后续版本继续安装
+在“应用程序”文件夹并替换旧版本；应用身份不变时，macOS 才能保留权限。
+
+繁體中文
+1. 將 TouchPane.app 拖到「應用程式」檔案夾。
+2. 先嘗試開啟一次 TouchPane。
+3. 開啟「系統設定 > 隱私權與安全性」，按一下「仍要打開」。
+4. 在「輔助使用」和「輸入監控」中允許 TouchPane。
+5. 兩項權限都啟用後，結束並重新開啟 TouchPane。
+
+此免費版本使用固定的自簽名憑證，未經 Apple 公證。請將後續版本繼續安裝於
+「應用程式」檔案夾並取代舊版本；應用程式身分不變時，macOS 才能保留權限。

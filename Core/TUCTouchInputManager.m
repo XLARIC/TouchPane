@@ -56,6 +56,8 @@
 @property CGFloat debugThreeFingerHorizontalTravelMM;
 
 @property (strong) NSTimer *touchInactivityTimer;
+@property uint8_t absoluteMouseButtons;
+@property CGPoint absoluteMouseLocation;
 
 @end
 
@@ -104,6 +106,7 @@ static const CGFloat kFiveFingerHoldMaxTravelMM = 12.0f;
 }
 
 - (void)stop {
+    [self handleAbsoluteMouseAt:self.absoluteMouseLocation buttons:0 wheel:0 normalized:NO];
     CloseHIDManager();
     if (self.touchInactivityTimer != nil) {
         [self.touchInactivityTimer invalidate];
@@ -1222,6 +1225,66 @@ static const CGFloat kFiveFingerHoldMaxTravelMM = 12.0f;
 
 
 #pragma mark - Bridge calls of C Header to Objective-C
+
+// WingCool 27c0:0858 reports single-touch positions as an absolute HID mouse.
+// Forward complete reports directly, preserving press/drag/release ordering.
+- (void)handleAbsoluteMouseAt:(CGPoint)point buttons:(uint8_t)buttons wheel:(int8_t)wheel normalized:(BOOL)normalized {
+    if (normalized) {
+        point = [self convertDigitizerPointToRelativeScreenPoint:point];
+        TUCScreen *screen = [self touchscreen];
+        if (screen == nil) return;
+        CGRect bounds = CGDisplayBounds((CGDirectDisplayID)screen.id);
+        point = CGPointMake(bounds.origin.x + fmax(0, fmin(1, point.x)) * (bounds.size.width - 1),
+                            bounds.origin.y + fmax(0, fmin(1, point.y)) * (bounds.size.height - 1));
+        self.absoluteMouseLocation = point;
+        self.debugProcessFrameID += 1;
+        self.debugActiveTouchCount = (buttons & 1) ? 1 : 0;
+        [self.delegate touchesDidChange];
+        [self.delegate inputDiagnosticsDidChange];
+    }
+    if (!self.postMouseEvents || !AXIsProcessTrusted()) return;
+    uint8_t previous = self.absoluteMouseButtons;
+    for (int i = 0; i < 3; ++i) {
+        uint8_t mask = 1 << i;
+        BOOL changed = (previous & mask) != (buttons & mask);
+        if (!changed && i != 0) continue;
+        // Do not emit an idle move when stopping the application.
+        if (!normalized && !changed) continue;
+        CGEventType type;
+        if (changed) {
+            const CGEventType down[] = {kCGEventLeftMouseDown, kCGEventRightMouseDown, kCGEventOtherMouseDown};
+            const CGEventType up[] = {kCGEventLeftMouseUp, kCGEventRightMouseUp, kCGEventOtherMouseUp};
+            type = (buttons & mask) ? down[i] : up[i];
+        } else {
+            type = (buttons & 1) ? kCGEventLeftMouseDragged : kCGEventMouseMoved;
+        }
+        CGEventRef event = CGEventCreateMouseEvent(NULL, type, point, (CGMouseButton)i);
+        if (event) {
+            CGEventSetIntegerValueField(event, kCGMouseEventClickState, 1);
+            CGEventPost(kCGHIDEventTap, event);
+            CFRelease(event);
+        }
+    }
+    if (wheel) {
+        CGEventRef event = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, (int32_t)wheel);
+        if (event) { CGEventPost(kCGHIDEventTap, event); CFRelease(event); }
+    }
+    self.absoluteMouseButtons = buttons;
+    if (normalized && (self.debugProcessFrameID <= 4 || previous != buttons)) {
+        fprintf(stderr, "WingCool report=%ld buttons=%u target=(%.0f,%.0f) trusted=%d\n",
+                (long)self.debugProcessFrameID, buttons, point.x, point.y, AXIsProcessTrusted());
+        fflush(stderr);
+    }
+}
+
+Boolean TouchInputManagerCanPostMouseEvents(void *self) {
+    return AXIsProcessTrusted();
+}
+
+void TouchInputManagerAbsoluteMouse(void *self, CGFloat x, CGFloat y, uint8_t buttons, int8_t wheel) {
+    [(__bridge TUCTouchInputManager *)self handleAbsoluteMouseAt:CGPointMake(x, y)
+                                                      buttons:buttons wheel:wheel normalized:YES];
+}
 
 void TouchInputManagerUpdateTouchPosition(void *self, CFIndex contactID, CGFloat x, CGFloat y, Boolean onSurface, Boolean isValid) {
     CGPoint point = CGPointMake(x, y);

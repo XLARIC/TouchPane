@@ -2,11 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_PATH="$ROOT_DIR/TouchMyMac.xcodeproj"
-SCHEME="TouchMyMac"
+PROJECT_PATH="$ROOT_DIR/TouchPane.xcodeproj"
+SCHEME="TouchPane"
 CONFIGURATION="${CONFIGURATION:-Debug}"
-DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/tmp/TouchMyMacDerivedData}"
-APP_NAME="TouchMyMac"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/tmp/TouchPaneDerivedData}"
+APP_NAME="TouchPane"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:-TouchPane Local Code Signing}"
+SIGN_SCRIPT="$ROOT_DIR/scripts/sign_app.sh"
 
 usage() {
   cat <<EOF
@@ -16,6 +18,7 @@ Usage:
 Env vars:
   DERIVED_DATA_PATH=...  (default: $DERIVED_DATA_PATH)
   CONFIGURATION=...      (default: $CONFIGURATION)
+  SIGNING_IDENTITY=...   (default: $SIGNING_IDENTITY)
 EOF
 }
 
@@ -47,6 +50,8 @@ if [[ -z "$APP_DIR" ]]; then
 fi
 
 TARGET_APP_PATH="$APP_DIR/$APP_NAME.app"
+STAGED_APP_PATH="$APP_DIR/.$APP_NAME.installing.$$"
+BACKUP_APP_PATH="$APP_DIR/.$APP_NAME.previous.$$"
 
 NEED_SUDO=0
 if [[ ! -w "$APP_DIR" ]]; then
@@ -61,15 +66,6 @@ run_install_cmd() {
     "$@"
   fi
 }
-
-echo "==> Quitting running app (if any)…"
-osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-
-echo "==> Removing existing install: $TARGET_APP_PATH"
-if [[ -e "$TARGET_APP_PATH" ]]; then
-  run_install_cmd rm -rf "$TARGET_APP_PATH"
-fi
 
 echo "==> Building ($CONFIGURATION)…"
 rm -rf "$DERIVED_DATA_PATH"
@@ -90,9 +86,37 @@ if [[ ! -d "$BUILT_APP_PATH" ]]; then
   exit 1
 fi
 
-echo "==> Installing to: $TARGET_APP_PATH"
+echo "==> Signing with stable identity: $SIGNING_IDENTITY"
+SIGNING_IDENTITY="$SIGNING_IDENTITY" "$SIGN_SCRIPT" "$BUILT_APP_PATH"
+
+echo "==> Staging verified app…"
 run_install_cmd mkdir -p "$APP_DIR"
-run_install_cmd ditto "$BUILT_APP_PATH" "$TARGET_APP_PATH"
+run_install_cmd rm -rf "$STAGED_APP_PATH" "$BACKUP_APP_PATH"
+run_install_cmd ditto "$BUILT_APP_PATH" "$STAGED_APP_PATH"
+codesign --verify --deep --strict --verbose=2 "$STAGED_APP_PATH"
+
+echo "==> Quitting running app (if any)…"
+osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+
+echo "==> Installing to: $TARGET_APP_PATH"
+if [[ -e "$TARGET_APP_PATH" ]]; then
+  run_install_cmd mv "$TARGET_APP_PATH" "$BACKUP_APP_PATH"
+fi
+
+if ! run_install_cmd mv "$STAGED_APP_PATH" "$TARGET_APP_PATH"; then
+  echo "Install failed; restoring the previous app." >&2
+  if [[ -e "$BACKUP_APP_PATH" ]]; then
+    run_install_cmd mv "$BACKUP_APP_PATH" "$TARGET_APP_PATH"
+  fi
+  exit 1
+fi
+
+if [[ -e "$BACKUP_APP_PATH" ]]; then
+  run_install_cmd rm -rf "$BACKUP_APP_PATH"
+fi
+
+codesign --verify --deep --strict --verbose=2 "$TARGET_APP_PATH"
 
 echo "==> Launching…"
 open "$TARGET_APP_PATH"

@@ -1,119 +1,151 @@
-# TouchMyMac
+# TouchPane
 
-Bring iPad-like touchscreen interaction to macOS.
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
-TouchMyMac makes external touch displays actually useful on a Mac. It translates raw HID touch input into clicks, scrolling, dragging, gesture actions, shortcut triggers, and an on-screen keyboard, so a touchscreen can feel much closer to a first-class macOS input device instead of a passive display.
+Native-feeling touch control for external displays on macOS.
 
-This fork focuses on day-to-day usability: direct touch interaction, configurable multi-finger gestures, Mission Control access, floating keyboard support, and a cleaner settings and diagnostics experience.
+TouchPane translates USB HID touchscreen input into pointer movement, clicks,
+scrolling, dragging, gestures, keyboard shortcuts, and an optional floating
+keyboard. It is a renamed and extended fork of
+[touchMyMac](https://github.com/jinghuichen/touchMyMac), which is based on
+[Touch-Up](https://github.com/shueber/Touch-Up) and TouchUpCore by Sebastian
+Hueber.
 
-## What It Supports
+## What This Fork Adds
+
+TouchPane 1.2.0 contains the following changes and additions:
+
+- Added WingCool/ASM-156UCT absolute-mouse HID support for USB device
+  `VID 27c0`, `PID 0858`.
+- Fixed multi-display behavior so touching the external touchscreen moves the
+  pointer to that display, even when the pointer was on another display.
+- Fixed touch coordinates on displays rotated by 90 degrees.
+- Added **System**, **Light**, and **Dark** appearance options. The default is
+  **System**.
+- Added **System**, **English**, **Simplified Chinese**, and **Traditional
+  Chinese** language options. The default is **System**, with English as the
+  fallback for unsupported system languages.
+- Fixed the Settings sidebar so the complete row is clickable, not only its
+  text.
+- Added a stable self-signed build and installation workflow to help macOS keep
+  Accessibility and Input Monitoring permissions across matching upgrades.
+- Added live HID, touch, gesture, action, and permission diagnostics.
+- Improved touch liftoff handling, noisy-panel tolerance, gesture recognition,
+  configurable shortcut actions, and the floating keyboard workflow.
+- Renamed the application and bundle identifiers from TouchMyMac to TouchPane.
+
+## Features
 
 - Single-finger tap to click
-- Single-finger drag scrolling with adjustable speed
+- Single-finger drag scrolling with adjustable speed and inertia
 - Hold then move to drag
 - Two-finger secondary click
 - Two-finger pinch magnification
 - Three-finger swipe up for Mission Control
-- Four-finger swipe up/down to show or hide a floating keyboard
+- Four-finger swipe up/down to show or hide the floating keyboard
 - Four-finger swipe left to trigger a configurable shortcut sequence
 - Five-finger hold to keep a key or key chord pressed
-- Live diagnostics and gesture debugging tools
+- Automatic or manual touchscreen-to-display assignment
+- Live input and gesture diagnostics
+- System-following appearance and language
 
-## Current Gesture Model
+## Tested Hardware
 
-The default interaction is tuned to feel closer to direct touch than a traditional trackpad translation layer.
+- ASM-156UCT external touch display
+- WingCool USB HID touchscreen (`VID 27c0`, `PID 0858`)
+- LG Smart Monitor Swing (tested by the upstream fork)
 
-- Tap to click
-- Drag to scroll
-- Hold briefly, then move to drag content or selections
-- Rest one finger and tap another nearby finger for right click
-- Pinch with two fingers to zoom
-- Swipe up with three fingers for Mission Control
-- Swipe up with four fingers to show the floating keyboard
-- Swipe down with four fingers to hide the floating keyboard
-
-The Settings window lets you customize:
-
-- Scroll speed
-- Hold duration
-- Double-click distance
-- Scroll inertia amount and decay
-- Error resistance for noisy touch panels
-- Five-finger hold shortcut mapping
-- Four-finger left swipe shortcut sequence
-
-## Floating Keyboard
-
-The built-in floating keyboard is designed for occasional touchscreen text entry on macOS.
-
-- Movable and closable panel
-- Letter layout plus a symbol layer
-- Shift, space, delete, and return
-- Triggered by four-finger swipe up
-- Hidden by four-finger swipe down
+Other USB HID touchscreens may work, but their report formats and noise levels
+vary.
 
 ## Requirements
 
 - macOS 12 or later
-- A USB touchscreen that exposes touch input through HID
-- Accessibility permission enabled for TouchMyMac
+- A USB HID touchscreen
+- Accessibility permission
+- Input Monitoring permission for touch controllers that expose input through
+  a mouse-class HID interface
 
-TouchMyMac should work with many touchscreens that already work on Windows, but hardware quality varies and some panels are noisier than others.
+## Download and First Launch
 
-The current version of this fork has been tested on:
+Download the latest `.dmg` and its `.sha256` file from
+[GitHub Releases](https://github.com/XLARIC/TouchPane/releases).
 
-- LG Smart Monitor Swing
+The free release is signed with the project's stable self-signed certificate.
+It is **not Apple-notarized**, so macOS will not trust it automatically:
 
-Other HID-compatible touchscreens may also work, but they are not currently validated by this fork.
+1. Verify the downloaded DMG checksum.
+2. Drag `TouchPane.app` to `Applications`.
+3. Try to open TouchPane once.
+4. Open **System Settings → Privacy & Security** and choose **Open Anyway**.
+5. Grant TouchPane access under **Accessibility** and **Input Monitoring**.
+6. Quit and reopen TouchPane after granting both permissions.
 
-## Build
+You normally need to approve the permissions only once. They are preserved
+only when later releases keep the same app name, bundle identifier, install
+path, and signing certificate.
+
+Verify a release from Terminal:
+
+```bash
+cd ~/Downloads
+shasum -a 256 -c TouchPane-1.2.0-macOS-universal.dmg.sha256
+```
+
+## Build from Source
 
 Open the project in Xcode:
 
 ```bash
-open TouchMyMac.xcodeproj
+open TouchPane.xcodeproj
 ```
 
-Or build from the command line:
+Or create a stable local signing identity, build, install, and launch:
 
 ```bash
-xcodebuild \
-  -project TouchMyMac.xcodeproj \
-  -scheme TouchMyMac \
-  CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  build
+./scripts/setup_local_signing.sh
+./scripts/build_install_run.sh --configuration Release
 ```
 
-## Run
+The setup script creates `TouchPane Local Code Signing` in the login Keychain.
+It does not write the certificate or private key into the repository. The first
+switch to this identity still requires Accessibility and Input Monitoring to be
+approved once.
 
-1. Build and launch `TouchMyMac.app`.
-2. Open Settings and grant Accessibility access.
-3. Connect your touchscreen.
-4. Assign the target screen if needed.
-5. Start interacting directly on the display.
+Create a universal release DMG:
 
-If input is unstable, use the Diagnostics pane to inspect connection state, gesture recognition, and live touch counters.
+```bash
+./scripts/build_release.sh
+```
+
+Release files are written to `dist/`. See [RELEASING.md](RELEASING.md) before
+publishing an official build.
 
 ## Project Structure
 
-- `TouchMyMac/`
-  App UI, settings, status item integration, diagnostics, and floating keyboard
-- `Core/`
-  HID parsing, touch tracking, gesture recognition, and event injection
-- `scripts/`
-  Small project utilities
+- `TouchPane/` — app UI, settings, status item, diagnostics, and floating
+  keyboard
+- `Core/` — HID parsing, touch tracking, gesture recognition, and event
+  injection
+- `scripts/` — signing, local installation, and release packaging
 
-## Notes
+## Security and Privacy
 
-- TouchMyMac works entirely in user space.
-- Accessibility permission is required because the app injects input events into macOS.
-- Some gesture behavior is intentionally conservative to reduce accidental activation on noisy panels.
+TouchPane runs locally and does not need a network connection for touch input.
+Accessibility is required because the app posts mouse and keyboard events.
+Input Monitoring is required for some touchscreen HID interfaces.
+
+Never commit signing certificates, private keys, `.p12` files, or their
+passwords. Contributors should use their own signing identity; official release
+artifacts must always use the maintainer's unchanged release identity.
 
 ## Acknowledgements
 
-This project builds on the original TouchMyMac and TouchUpCore work by Sebastian Hueber. The current version keeps that foundation and extends it with additional gesture support, customizable shortcut mappings, a floating keyboard, updated settings UI, and ongoing macOS-focused refinements.
+TouchPane derives from
+[jinghuichen/touchMyMac](https://github.com/jinghuichen/touchMyMac), which builds
+on [shueber/Touch-Up](https://github.com/shueber/Touch-Up) and TouchUpCore by
+Sebastian Hueber. Their copyright notices remain in the source and license.
 
 ## License
 
-See [LICENSE](LICENSE).
+[MIT](LICENSE)

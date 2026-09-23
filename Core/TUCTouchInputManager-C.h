@@ -21,4 +21,7 @@ void TouchInputManagerDidConnectTouchscreen(void *self);
 
 void TouchInputManagerDidDisconnectTouchscreen(void *self);
 
+Boolean TouchInputManagerCanPostMouseEvents(void *self);
+void TouchInputManagerAbsoluteMouse(void *self, CGFloat x, CGFloat y, uint8_t buttons, int8_t wheel);
+
 #endif /* TUCTouchInputManager_C_h */

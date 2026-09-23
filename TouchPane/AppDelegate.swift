@@ -1,6 +1,6 @@
 //
 //  AppDelegate.swift
-//  TouchMyMac
+//  TouchPane
 //
 //  Created by Sebastian Hueber on 03.02.23.
 //
@@ -13,7 +13,7 @@ import Combine
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
 
-    let model = TouchMyMac()
+    let model = TouchPane()
     
     
     var statusItem: NSStatusItem!
@@ -45,6 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     //MARK: - Lifecycle
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        NSApp.appearance = self.model.appAppearance.nsAppearance
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.statusItem.menu = self.statusMenu
         
@@ -66,6 +67,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.activationMenuItem.state = $0 ? .on : .off
                 }
         )
+
+        self.observers.append(
+            self.model.$appAppearance
+                .receive(on: DispatchQueue.main)
+                .sink { appearance in
+                    NSApp.appearance = appearance.nsAppearance
+                }
+        )
+
+        self.observers.append(
+            self.model.$appLanguage
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.applyLocalizedTitles()
+                }
+        )
+
+        applyLocalizedTitles()
         
         self.model.touchManager.start()
         
@@ -112,15 +131,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func hideFloatingKeyboard() {
         self.floatingKeyboardPanel.orderOut(nil)
     }
+
+    private func applyLocalizedTitles() {
+        activationMenuItem?.title = model.text("Control Mouse with Touch", "启用触摸控制鼠标")
+        statusMenu?.items.first(where: { $0.keyEquivalent == "," })?.title = model.text("Settings…", "设置…")
+        statusMenu?.items.first(where: { $0.keyEquivalent == "q" })?.title = model.text("Quit", "退出")
+
+        settingsWindow.title = model.text("TouchPane Settings", "TouchPane 设置")
+        floatingKeyboardPanel.title = model.text("Floating Keyboard", "悬浮键盘")
+        debugOverlay.title = model.text("Touches", "触摸调试")
+    }
 }
 
 
 
 class SettingsWindow: NSWindow {
     
-    var model: TouchMyMac?
+    var model: TouchPane?
     
-    static func window(model: TouchMyMac) -> SettingsWindow {
+    static func window(model: TouchPane) -> SettingsWindow {
         let vc = NSHostingController(rootView: SettingsView(model:model))
         let window = SettingsWindow(contentRect: .zero,
                                     styleMask: [.closable, .titled, .fullSizeContentView, .resizable],
@@ -128,7 +157,7 @@ class SettingsWindow: NSWindow {
                                     defer: true,
                                     screen: nil)
         
-        window.title = "TouchMyMac Settings"
+        window.title = model.text("TouchPane Settings", "TouchPane 设置")
         window.tabbingMode = .disallowed
         window.model = model
         window.level = .popUpMenu
@@ -163,10 +192,10 @@ class SettingsWindow: NSWindow {
 
 class DebugOverlay: NSWindow {
     
-    var model: TouchMyMac?
+    var model: TouchPane?
     static var completion: (()->Void)?
     
-    static func overlay(model: TouchMyMac) -> DebugOverlay {
+    static func overlay(model: TouchPane) -> DebugOverlay {
         let vc = NSHostingController(rootView: DebugView(model:model, closeAction: {
             DebugOverlay.completion?()
         }))
@@ -177,7 +206,7 @@ class DebugOverlay: NSWindow {
                                     defer: true,
                                     screen: nil)
         
-        window.title = "Touches"
+        window.title = model.text("Touches", "触摸调试")
         window.tabbingMode = .disallowed
         window.model = model
         
@@ -276,7 +305,7 @@ struct FloatingKeyboardButtonStyle: ButtonStyle {
 }
 
 struct FloatingKeyboardView: View {
-    @ObservedObject var model: TouchMyMac
+    @ObservedObject var model: TouchPane
     @State private var shiftEnabled = false
     @State private var symbolKeyboardEnabled = false
     @State private var flashedKeyID: String?
@@ -318,14 +347,14 @@ struct FloatingKeyboardView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Floating Keyboard")
+                    Text(model.text("Floating Keyboard", "悬浮键盘"))
                         .font(.title3.weight(.semibold))
-                    Text("Four-finger swipe up shows this panel. Four-finger swipe down hides it.")
+                    Text(model.text("Four-finger swipe up shows this panel. Four-finger swipe down hides it.", "四指上滑显示此面板，四指下滑将其隐藏。"))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                Button("Hide", action: closeAction)
+                Button(model.text("Hide", "隐藏"), action: closeAction)
                     .buttonStyle(.borderless)
                     .foregroundColor(.secondary)
             }
@@ -341,7 +370,7 @@ struct FloatingKeyboardView: View {
             }
 
             if shiftEnabled {
-                Text("Shift will apply to the next letter key.")
+                Text(model.text("Shift will apply to the next letter key.", "Shift 将应用到下一个字母键。"))
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -409,6 +438,13 @@ struct FloatingKeyboardView: View {
         if shiftEnabled && key.token?.range(of: #"^[a-z]$"#, options: .regularExpression) != nil {
             return key.title.uppercased()
         }
+        switch key.title {
+        case "Shift": return model.text("Shift", "换挡")
+        case "Delete": return model.text("Delete", "删除")
+        case "Space": return model.text("Space", "空格")
+        case "Return": return model.text("Return", "回车")
+        default: break
+        }
         return key.title
     }
 
@@ -431,9 +467,9 @@ struct FloatingKeyboardView: View {
 
 
 class FloatingKeyboardPanel: NSPanel {
-    var model: TouchMyMac?
+    var model: TouchPane?
 
-    static func panel(model: TouchMyMac) -> FloatingKeyboardPanel {
+    static func panel(model: TouchPane) -> FloatingKeyboardPanel {
         let window = FloatingKeyboardPanel(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 390),
             styleMask: [.titled, .closable, .nonactivatingPanel, .fullSizeContentView],
@@ -441,7 +477,7 @@ class FloatingKeyboardPanel: NSPanel {
             defer: true
         )
 
-        window.title = "Floating Keyboard"
+        window.title = model.text("Floating Keyboard", "悬浮键盘")
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false
         window.isFloatingPanel = true

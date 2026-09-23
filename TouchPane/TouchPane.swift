@@ -1,6 +1,6 @@
 //
 //  Model.swift
-//  TouchMyMac
+//  TouchPane
 //
 //  Created by Sebastian Hueber on 03.02.23.
 //
@@ -8,6 +8,31 @@
 import AppKit
 import Combine
 import TouchUpCore
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system
+    case english
+    case simplifiedChinese
+    case traditionalChinese
+
+    var id: String { rawValue }
+}
+
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+}
 
 struct DiagnosticsEvent: Identifiable {
     let id = UUID()
@@ -26,10 +51,16 @@ struct TouchManagerDiagnosticsSnapshot {
     let threeFingerHorizontalTravelMM: CGFloat
 }
 
-class TouchMyMac: NSObject, ObservableObject {
+class TouchPane: NSObject, ObservableObject {
     
     let touchManager: TUCTouchInputManager
     @Published var touches = [TUCTouch]()
+    @Published var appLanguage: AppLanguage = .system {
+        didSet { UserDefaults.standard.set(appLanguage.rawValue, forKey: "appLanguage") }
+    }
+    @Published var appAppearance: AppAppearance = .system {
+        didSet { UserDefaults.standard.set(appAppearance.rawValue, forKey: "appAppearance") }
+    }
     
     
     var observers = [AnyCancellable]()
@@ -97,6 +128,87 @@ class TouchMyMac: NSObject, ObservableObject {
     
     private var lastGestureLogAt: Date?
     private var lastGestureSignature: String = ""
+    private var traditionalChineseCache: [String: String] = [:]
+
+    func text(_ english: String, _ chinese: String) -> String {
+        switch effectiveLanguage {
+        case .simplifiedChinese:
+            return chinese
+        case .traditionalChinese:
+            return traditionalChineseText(chinese)
+        case .system, .english:
+            return english
+        }
+    }
+
+    var effectiveLanguage: AppLanguage {
+        guard appLanguage == .system else { return appLanguage }
+        let languageCode = Locale.preferredLanguages.first?
+            .replacingOccurrences(of: "_", with: "-")
+            .lowercased() ?? "en"
+
+        if languageCode.hasPrefix("zh-hant") ||
+            languageCode.hasPrefix("zh-tw") ||
+            languageCode.hasPrefix("zh-hk") ||
+            languageCode.hasPrefix("zh-mo") {
+            return .traditionalChinese
+        }
+        if languageCode == "zh" || languageCode.hasPrefix("zh-") {
+            return .simplifiedChinese
+        }
+        return .english
+    }
+
+    func languageName(_ language: AppLanguage) -> String {
+        switch language {
+        case .system: return text("System", "跟随系统")
+        case .english: return "English"
+        case .simplifiedChinese: return "简体中文"
+        case .traditionalChinese: return "繁體中文"
+        }
+    }
+
+    private func traditionalChineseText(_ simplified: String) -> String {
+        if let cached = traditionalChineseCache[simplified] {
+            return cached
+        }
+
+        let convertedText = NSMutableString(string: simplified)
+        guard CFStringTransform(convertedText, nil, "Hans-Hant" as CFString, false) else {
+            return simplified
+        }
+
+        var result = convertedText as String
+        let macTerminology = [
+            ("設置", "設定"),
+            ("觸摸", "觸控"),
+            ("鼠標", "滑鼠"),
+            ("屏幕", "螢幕"),
+            ("滾動", "捲動"),
+            ("調度中心", "指揮中心"),
+            ("調試", "除錯"),
+            ("實時", "即時"),
+            ("數據", "資料"),
+            ("默認", "預設"),
+            ("信息", "資訊"),
+            ("文件", "檔案"),
+            ("啓", "啟")
+        ]
+        for (source, replacement) in macTerminology {
+            result = result.replacingOccurrences(of: source, with: replacement)
+        }
+
+        traditionalChineseCache[simplified] = result
+        return result
+    }
+
+    func appearanceName(_ appearance: AppAppearance) -> String {
+        switch appearance {
+        case .system: return text("System", "跟随系统")
+        case .light: return text("Light", "浅色")
+        case .dark: return text("Dark", "深色")
+        }
+    }
     
     // MARK: - Attempt to automatically determine touch screen
     
@@ -284,7 +396,7 @@ class TouchMyMac: NSObject, ObservableObject {
         
         self.touchManager.delegate = self
         
-        NotificationCenter.default.addObserver(self, selector: #selector(TouchMyMac.screenParametersDidChange), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(TouchPane.screenParametersDidChange), name: NSApplication.didChangeScreenParametersNotification, object: nil)
 
         initPreferences()
         
@@ -361,39 +473,39 @@ class TouchMyMac: NSObject, ObservableObject {
     
     func gestureDisplayName(_ gesture: TUCCursorGesture) -> String {
         switch gesture {
-        case .TUCCursorGestureTouchDown: return "Touch Down"
-        case .TUCCursorGestureTap: return "Tap"
-        case .TUCCursorGestureLongPress: return "Long Press"
-        case .TUCCursorGestureDrag: return "Drag (1 Finger)"
-        case .TUCCursorGestureHoldAndDrag: return "Hold + Drag"
-        case .TUCCursorGestureTapSecondFinger: return "Second-Finger Tap"
-        case .TUCCursorGestureTwoFingerDrag: return "Two-Finger Drag"
-        case .TUCCursorGesturePinch: return "Pinch"
-        case .TUCCursorGestureThreeFingerSwipeUp: return "Three-Finger Swipe Up"
-        case .TUCCursorGestureFourFingerSwipeLeft: return "Four-Finger Swipe Left"
-        case .TUCCursorGestureFiveFingerHold: return "Five-Finger Hold"
-        case .TUCCursorGestureFourFingerSwipeUp: return "Four-Finger Swipe Up"
-        case .TUCCursorGestureFourFingerSwipeDown: return "Four-Finger Swipe Down"
-        default: return "Unknown (\(gesture.rawValue))"
+        case .TUCCursorGestureTouchDown: return text("Touch Down", "触摸按下")
+        case .TUCCursorGestureTap: return text("Tap", "点按")
+        case .TUCCursorGestureLongPress: return text("Long Press", "长按")
+        case .TUCCursorGestureDrag: return text("Drag (1 Finger)", "单指拖动")
+        case .TUCCursorGestureHoldAndDrag: return text("Hold + Drag", "长按拖动")
+        case .TUCCursorGestureTapSecondFinger: return text("Second-Finger Tap", "第二指点按")
+        case .TUCCursorGestureTwoFingerDrag: return text("Two-Finger Drag", "双指拖动")
+        case .TUCCursorGesturePinch: return text("Pinch", "捏合")
+        case .TUCCursorGestureThreeFingerSwipeUp: return text("Three-Finger Swipe Up", "三指上滑")
+        case .TUCCursorGestureFourFingerSwipeLeft: return text("Four-Finger Swipe Left", "四指左滑")
+        case .TUCCursorGestureFiveFingerHold: return text("Five-Finger Hold", "五指长按")
+        case .TUCCursorGestureFourFingerSwipeUp: return text("Four-Finger Swipe Up", "四指上滑")
+        case .TUCCursorGestureFourFingerSwipeDown: return text("Four-Finger Swipe Down", "四指下滑")
+        default: return text("Unknown", "未知") + " (\(gesture.rawValue))"
         }
     }
     
     func actionDisplayName(_ action: TUCCursorAction) -> String {
         switch action {
-        case .none: return "None"
-        case .move: return "Move Cursor"
-        case .pointAndClick: return "Point and Click"
-        case .drag: return "Drag"
-        case .click: return "Click"
-        case .secondaryClick: return "Secondary Click"
-        case .scroll: return "Scroll"
-        case .magnify: return "Magnify"
+        case .none: return text("None", "无")
+        case .move: return text("Move Cursor", "移动光标")
+        case .pointAndClick: return text("Point and Click", "指向并点按")
+        case .drag: return text("Drag", "拖动")
+        case .click: return text("Click", "点按")
+        case .secondaryClick: return text("Secondary Click", "辅助点按")
+        case .scroll: return text("Scroll", "滚动")
+        case .magnify: return text("Magnify", "缩放")
         case .missionControl: return "Mission Control"
-        case .keyboardShortcutHold: return "Hold Shortcut"
-        case .keyboardShortcutSequence: return "Shortcut Sequence"
-        case .floatingKeyboard: return "Floating Keyboard"
-        case .hideFloatingKeyboard: return "Hide Floating Keyboard"
-        @unknown default: return "Unknown"
+        case .keyboardShortcutHold: return text("Hold Shortcut", "按住快捷键")
+        case .keyboardShortcutSequence: return text("Shortcut Sequence", "快捷键序列")
+        case .floatingKeyboard: return text("Floating Keyboard", "悬浮键盘")
+        case .hideFloatingKeyboard: return text("Hide Floating Keyboard", "隐藏悬浮键盘")
+        @unknown default: return text("Unknown", "未知")
         }
     }
     
@@ -421,18 +533,18 @@ class TouchMyMac: NSObject, ObservableObject {
     
     func suggestedBlocker() -> String {
         if !accessibilityTrustedNow {
-            return "Accessibility permission is not active."
+            return text("Accessibility permission is not active.", "辅助功能权限未启用。")
         }
         if !isPublishingMouseEventsEnabled {
-            return "Mouse event publishing is OFF."
+            return text("Mouse event publishing is OFF.", "鼠标事件输出已关闭。")
         }
         if !connectionState.isConnected {
-            return "No touchscreen HID connection detected."
+            return text("No touchscreen HID connection detected.", "未检测到触摸屏 HID 连接。")
         }
         if touchUpdateCount == 0 {
-            return "No touch reports received yet."
+            return text("No touch reports received yet.", "尚未收到触摸报告。")
         }
-        return "Touch reports are flowing. If output still fails, inspect diagnostics and restart input pipeline."
+        return text("Touch reports are flowing. If output still fails, inspect diagnostics and restart input pipeline.", "触摸报告接收正常；如仍无输出，请查看诊断并重启输入通道。")
     }
     
     func sendTestClickAtCursor() {
@@ -460,12 +572,14 @@ class TouchMyMac: NSObject, ObservableObject {
 
 
 // MARK: - Loading, Saving and Syncing Settings with Framework
-extension TouchMyMac {
+extension TouchPane {
     
     func initPreferences() {
         let defaults = UserDefaults.standard
         
         defaults.register(defaults: [
+            "appLanguage" : AppLanguage.system.rawValue,
+            "appAppearance" : AppAppearance.system.rawValue,
             "holdDuration" : 0.1,
             "doubleClickDistance" : 8,
             "errorResistance" : 4,
@@ -481,6 +595,9 @@ extension TouchMyMac {
             "scrollInertiaDecelerationPerFrame" : 0.95,
             "scrollInertiaVelocityMultiplier" : 1.0
         ])
+
+        appLanguage = AppLanguage(rawValue: defaults.string(forKey: "appLanguage") ?? "") ?? .system
+        appAppearance = AppAppearance(rawValue: defaults.string(forKey: "appAppearance") ?? "") ?? .system
         
         holdDuration = defaults.double(forKey: "holdDuration")
         doubleClickDistance = defaults.double(forKey: "doubleClickDistance")
@@ -537,6 +654,9 @@ extension TouchMyMac {
     
     func savePreferences() {
         let defaults = UserDefaults.standard
+
+        defaults.set(appLanguage.rawValue, forKey: "appLanguage")
+        defaults.set(appAppearance.rawValue, forKey: "appAppearance")
         
         defaults.set(holdDuration, forKey: "holdDuration")
         defaults.set(doubleClickDistance, forKey: "doubleClickDistance")
@@ -560,7 +680,7 @@ extension TouchMyMac {
 
 
 
-extension TouchMyMac: TUCTouchDelegate {
+extension TouchPane: TUCTouchDelegate {
     func performUIUpdate(_ updates: @escaping () -> Void) {
         if Thread.isMainThread {
             updates()
@@ -723,72 +843,72 @@ extension TouchMyMac: TUCTouchDelegate {
 }
 
 
-extension TouchMyMac {
-    func uiLabels<T>(for keyPath: KeyPath<TouchMyMac, T>) -> (title:String, description:String) {
+extension TouchPane {
+    func uiLabels<T>(for keyPath: KeyPath<TouchPane, T>) -> (title:String, description:String) {
         switch keyPath {
         case \.isPublishingMouseEventsEnabled:
-            return("Control Mouse with Touch",
-                   "Turns the driver on or off.")
+            return(text("Control Mouse with Touch", "启用触摸控制鼠标"),
+                   text("Turns the driver on or off.", "开启或关闭触摸输入驱动。"))
             
         case \.connectedTouchscreen:
-            return("Assign Mouse Events to",
-                   "Specifies which screen should receive the touch events.")
+            return(text("Assign Mouse Events to", "触摸事件发送到"),
+                   text("Specifies which screen should receive the touch events.", "指定接收触摸事件的显示器。"))
             
         case \.isSecondaryClickEnabled:
-            return("Secondary Click",
-                   "While your pointing finger is resting on the screen, tap another finger in proximity to it to generate a secondary click event at the location of the first finger.")
+            return(text("Secondary Click", "辅助点按"),
+                   text("While your pointing finger is resting on the screen, tap another finger in proximity to it to generate a secondary click event at the location of the first finger.", "一根手指停在屏幕上时，用另一根手指在附近点按，可在第一根手指的位置触发辅助点按。"))
             
         case \.isMagnificationEnabled:
-            return("Magnification",
-                   "Pinch two fingers to increase or decrease the size of the content. (EXPERIMENTAL)")
+            return(text("Magnification", "缩放"),
+                   text("Pinch two fingers to increase or decrease the size of the content. (EXPERIMENTAL)", "双指捏合以放大或缩小内容。（实验功能）"))
 
         case \.isThreeFingerSwipeEnabled:
-            return("Three-Finger Swipe Up",
-                   "Swipe up with three fingers to open Mission Control.")
+            return(text("Three-Finger Swipe Up", "三指上滑"),
+                   text("Swipe up with three fingers to open Mission Control.", "三指上滑打开调度中心。"))
 
         case \.isFourFingerSwipeUpKeyboardEnabled:
-            return("Four-Finger Swipe Up Keyboard",
-                   "Swipe up with four fingers to show the floating keyboard, and swipe down with four fingers to hide it.")
+            return(text("Four-Finger Swipe Up Keyboard", "四指上滑键盘"),
+                   text("Swipe up with four fingers to show the floating keyboard, and swipe down with four fingers to hide it.", "四指上滑显示悬浮键盘，四指下滑隐藏。"))
 
         case \.fiveFingerHoldShortcutSpec:
-            return("Five-Finger Hold Shortcut",
-                   "Hold five fingers still to keep a shortcut chord pressed. Example: fn or cmd+shift.")
+            return(text("Five-Finger Hold Shortcut", "五指长按快捷键"),
+                   text("Hold five fingers still to keep a shortcut chord pressed. Example: fn or cmd+shift.", "五指保持不动时持续按住快捷键组合，例如 fn 或 cmd+shift。"))
 
         case \.fourFingerSwipeLeftSequenceSpec:
-            return("Four-Finger Left Swipe Sequence",
-                   "Swipe left with four fingers to fire a shortcut sequence. Example: cmd+a, delete.")
+            return(text("Four-Finger Left Swipe Sequence", "四指左滑快捷键序列"),
+                   text("Swipe left with four fingers to fire a shortcut sequence. Example: cmd+a, delete.", "四指左滑触发快捷键序列，例如 cmd+a, delete。"))
             
         case \.holdDuration:
-            return("Hold Duration",
-                   "How long do you have to hold finger to initiate hold&drag")
+            return(text("Hold Duration", "长按时间"),
+                   text("How long do you have to hold finger to initiate hold&drag", "手指按住多久后开始长按拖动。"))
             
         case \.doubleClickDistance:
-            return("Double Click Zone",
-                   "How many mm can two taps be apart from each other to qualify double click")
+            return(text("Double Click Zone", "双击范围"),
+                   text("How many mm can two taps be apart from each other to qualify double click", "两次点按相距多少毫米以内时判定为双击。"))
             
         case \.ignoreOriginTouches:
-            return("Ignore Origin Touches",
-                   "If your touchscreen randomly sends coordinate (0,0) in its datastream, toggle this option to make input more stable.")
+            return(text("Ignore Origin Touches", "忽略原点触摸"),
+                   text("If your touchscreen randomly sends coordinate (0,0) in its datastream, toggle this option to make input more stable.", "如果触摸屏偶尔错误发送坐标 (0,0)，开启此项可提高稳定性。"))
             
         case \.errorResistance:
-            return("Error Resistance",
-                   "If your touchscreen is really unreliable at reporting touches, increase this slider to make inputs more stable at the cost of higher latency in detecting liftoffs.")
+            return(text("Error Resistance", "容错等级"),
+                   text("If your touchscreen is really unreliable at reporting touches, increase this slider to make inputs more stable at the cost of higher latency in detecting liftoffs.", "触摸报告不稳定时可提高此值；数值越高越稳定，但检测手指离开会稍有延迟。"))
 
         case \.isScrollInertiaEnabled:
-            return("Scroll Inertia",
-                   "Keeps scrolling for a short time after you lift your finger (iPad-like).")
+            return(text("Scroll Inertia", "滚动惯性"),
+                   text("Keeps scrolling for a short time after you lift your finger (iPad-like).", "手指离开后继续滚动一小段距离，效果类似 iPad。"))
 
         case \.scrollSpeedMultiplier:
-            return("Scroll Speed",
-                   "Scales regular one-finger drag scrolling. Higher values scroll faster for the same finger travel.")
+            return(text("Scroll Speed", "滚动速度"),
+                   text("Scales regular one-finger drag scrolling. Higher values scroll faster for the same finger travel.", "调整单指拖动滚动速度；数值越高，同样手指位移滚动越快。"))
 
         case \.scrollInertiaDecelerationPerFrame:
-            return("Decay Speed",
-                   "Higher values decay slower; lower values decay faster.")
+            return(text("Decay Speed", "衰减速度"),
+                   text("Higher values decay slower; lower values decay faster.", "数值越高减速越慢，数值越低减速越快。"))
 
         case \.scrollInertiaVelocityMultiplier:
-            return("Inertia Amount",
-                   "Scales the starting speed of inertial scrolling.")
+            return(text("Inertia Amount", "惯性强度"),
+                   text("Scales the starting speed of inertial scrolling.", "调整惯性滚动的初始速度。"))
             
         default:
             return("\(keyPath)", "")

@@ -1,6 +1,6 @@
 //
 //  SettingsView.swift
-//  TouchMyMac
+//  TouchPane
 //
 //  Created by Sebastian Hueber on 03.02.23.
 //
@@ -16,21 +16,21 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(_ model: TouchPane) -> String {
         switch self {
-        case .general: return "General"
-        case .gestures: return "Gestures"
-        case .tuning: return "Tuning"
-        case .diagnostics: return "Diagnostics"
+        case .general: return model.text("General", "通用")
+        case .gestures: return model.text("Gestures", "手势")
+        case .tuning: return model.text("Tuning", "调校")
+        case .diagnostics: return model.text("Diagnostics", "诊断")
         }
     }
 
-    var subtitle: String {
+    func subtitle(_ model: TouchPane) -> String {
         switch self {
-        case .general: return "Input and screen routing"
-        case .gestures: return "Gesture actions and mappings"
-        case .tuning: return "Thresholds and scrolling"
-        case .diagnostics: return "Debug and live status"
+        case .general: return model.text("Input, display and app preferences", "输入、显示器与应用偏好")
+        case .gestures: return model.text("Gesture actions and mappings", "手势操作与映射")
+        case .tuning: return model.text("Thresholds and scrolling", "阈值与滚动")
+        case .diagnostics: return model.text("Debug and live status", "调试与实时状态")
         }
     }
 
@@ -46,7 +46,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
 
-    @ObservedObject var model: TouchMyMac
+    @ObservedObject var model: TouchPane
     @State private var selectedPane: SettingsPane = .general
 
     static let diagnosticsDateFormatter: DateFormatter = {
@@ -105,6 +105,23 @@ struct SettingsView: View {
         }
     }
 
+    private var languageSelection: Binding<AppLanguage> {
+        Binding(get: { model.appLanguage }, set: { model.appLanguage = $0 })
+    }
+
+    private var appearanceSelection: Binding<AppAppearance> {
+        Binding(get: { model.appAppearance }, set: { model.appAppearance = $0 })
+    }
+
+    private var connectionStateText: String {
+        switch model.connectionState {
+        case .uncertain: return model.text("Checking", "检查中")
+        case .disconnected: return model.text("Disconnected", "未连接")
+        case .connectedHotPlug: return model.text("Connected", "已连接")
+        case .connectedPreferred: return model.text("Connected (preferred)", "已连接（首选）")
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
@@ -118,9 +135,9 @@ struct SettingsView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("TouchMyMac")
+                Text("TouchPane")
                     .font(.title3.weight(.semibold))
-                Text("Preferences")
+                Text(model.text("Preferences", "偏好设置"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -153,10 +170,10 @@ struct SettingsView: View {
                     .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(pane.title)
+                    Text(pane.title(model))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
-                    Text(pane.subtitle)
+                    Text(pane.subtitle(model))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -165,12 +182,15 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var detailPane: some View {
@@ -196,9 +216,9 @@ struct SettingsView: View {
 
     private var pageHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(selectedPane.title)
+            Text(selectedPane.title(model))
                 .font(.system(size: 29, weight: .bold))
-            Text(selectedPane.subtitle)
+            Text(selectedPane.subtitle(model))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -210,7 +230,41 @@ struct SettingsView: View {
                 accessBanner
             }
 
-            SettingsGroup(title: "Input") {
+            SettingsGroup(title: model.text("Appearance & Language", "外观与语言")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingText(labels: (
+                        model.text("Appearance", "外观"),
+                        model.text("Follow macOS or choose a fixed light or dark appearance.", "跟随 macOS，或固定使用浅色或深色外观。")
+                    ))
+                    Picker("", selection: appearanceSelection) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(model.appearanceName(appearance)).tag(appearance)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+                .padding(.vertical, 8)
+
+                sectionDivider
+
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingText(labels: (
+                        model.text("Language", "语言"),
+                        model.text("Follow the system language or choose English, Simplified Chinese, or Traditional Chinese.", "跟随系统语言，或选择 English / 简体中文 / 繁體中文；无法识别时使用英文。")
+                    ))
+                    Picker("", selection: languageSelection) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(model.languageName(language)).tag(language)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+                .padding(.vertical, 8)
+            }
+
+            SettingsGroup(title: model.text("Input", "输入")) {
                 settingToggleRow(
                     labels: model.uiLabels(for: \.isPublishingMouseEventsEnabled),
                     isOn: $model.isPublishingMouseEventsEnabled
@@ -222,7 +276,7 @@ struct SettingsView: View {
                     SettingText(labels: model.uiLabels(for: \.connectedTouchscreen))
 
                     if model.connectedScreens.isEmpty {
-                        Text("No connected touchscreen detected yet.")
+                        Text(model.text("No connected touchscreen detected yet.", "尚未检测到已连接的触摸屏。"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -238,17 +292,17 @@ struct SettingsView: View {
                 .padding(.vertical, 8)
             }
 
-            SettingsGroup(title: "Status") {
-                settingValueRow("Accessibility", value: model.accessibilityTrustedNow ? "Granted" : "Missing")
+            SettingsGroup(title: model.text("Status", "状态")) {
+                settingValueRow(model.text("Accessibility", "辅助功能"), value: model.accessibilityTrustedNow ? model.text("Granted", "已授权") : model.text("Missing", "未授权"))
                 sectionDivider
-                settingValueRow("Input Publishing", value: model.isPublishingMouseEventsEnabled ? "Enabled" : "Disabled")
+                settingValueRow(model.text("Input Publishing", "输入输出"), value: model.isPublishingMouseEventsEnabled ? model.text("Enabled", "已启用") : model.text("Disabled", "已停用"))
                 sectionDivider
-                settingValueRow("Connection", value: String(describing: model.connectionState))
+                settingValueRow(model.text("Connection", "连接"), value: connectionStateText)
                 sectionDivider
-                settingValueRow("Assigned Screen", value: model.connectedTouchscreen?.name ?? "(Auto)")
+                settingValueRow(model.text("Assigned Screen", "指定显示器"), value: model.connectedTouchscreen?.name ?? model.text("(Auto)", "（自动）"))
             }
 
-            SettingsGroup(title: "About") {
+            SettingsGroup(title: model.text("About", "关于")) {
                 footer
             }
         }
@@ -256,7 +310,7 @@ struct SettingsView: View {
 
     private var gesturesPane: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: "Gesture Toggles") {
+            SettingsGroup(title: model.text("Gesture Toggles", "手势开关")) {
                 settingToggleRow(labels: model.uiLabels(for: \.isSecondaryClickEnabled), isOn: $model.isSecondaryClickEnabled)
                 sectionDivider
                 settingToggleRow(labels: model.uiLabels(for: \.isMagnificationEnabled), isOn: $model.isMagnificationEnabled)
@@ -266,19 +320,19 @@ struct SettingsView: View {
                 settingToggleRow(labels: model.uiLabels(for: \.isFourFingerSwipeUpKeyboardEnabled), isOn: $model.isFourFingerSwipeUpKeyboardEnabled)
             }
 
-            SettingsGroup(title: "Shortcut Mapping") {
+            SettingsGroup(title: model.text("Shortcut Mapping", "快捷键映射")) {
                 shortcutFieldRow(
                     labels: model.uiLabels(for: \.fiveFingerHoldShortcutSpec),
                     placeholder: "fn",
                     text: $model.fiveFingerHoldShortcutSpec,
-                    hint: "Example: fn or cmd+shift"
+                    hint: model.text("Example: fn or cmd+shift", "示例：fn 或 cmd+shift")
                 )
                 sectionDivider
                 shortcutFieldRow(
                     labels: model.uiLabels(for: \.fourFingerSwipeLeftSequenceSpec),
                     placeholder: "cmd+a, delete",
                     text: $model.fourFingerSwipeLeftSequenceSpec,
-                    hint: "Example: cmd+a, delete"
+                    hint: model.text("Example: cmd+a, delete", "示例：cmd+a, delete")
                 )
             }
         }
@@ -286,13 +340,13 @@ struct SettingsView: View {
 
     private var tuningPane: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: "Touch Timing") {
+            SettingsGroup(title: model.text("Touch Timing", "触摸时间")) {
                 sliderRow(
                     labels: model.uiLabels(for: \.holdDuration),
                     value: $model.holdDuration,
                     range: 0.0...0.16,
                     step: 0.02,
-                    currentText: { String(format: "Current %.2f s", $0) },
+                    currentText: { String(format: model.text("Current %.2f s", "当前 %.2f 秒"), $0) },
                     minText: "0.00 s",
                     maxText: "0.16 s"
                 )
@@ -302,13 +356,13 @@ struct SettingsView: View {
                     value: doubleClickDistanceBinding,
                     range: 0...8,
                     step: 1,
-                    currentText: { "Current \(Int($0)) mm" },
+                    currentText: { model.text("Current \(Int($0)) mm", "当前 \(Int($0)) 毫米") },
                     minText: "0 mm",
                     maxText: "8 mm"
                 )
             }
 
-            SettingsGroup(title: "Scroll") {
+            SettingsGroup(title: model.text("Scroll", "滚动")) {
                 settingToggleRow(labels: model.uiLabels(for: \.isScrollInertiaEnabled), isOn: $model.isScrollInertiaEnabled)
                 sectionDivider
                 sliderRow(
@@ -316,7 +370,7 @@ struct SettingsView: View {
                     value: scrollSpeedBinding,
                     range: 0.5...3.0,
                     step: 0.1,
-                    currentText: { String(format: "Current %.1fx", $0) },
+                    currentText: { String(format: model.text("Current %.1fx", "当前 %.1fx"), $0) },
                     minText: "0.5x",
                     maxText: "3.0x"
                 )
@@ -326,7 +380,7 @@ struct SettingsView: View {
                     value: inertiaAmountBinding,
                     range: 0.5...2.0,
                     step: 0.05,
-                    currentText: { String(format: "Current %.2fx", $0) },
+                    currentText: { String(format: model.text("Current %.2fx", "当前 %.2fx"), $0) },
                     minText: "0.5x",
                     maxText: "2.0x",
                     disabled: !model.isScrollInertiaEnabled
@@ -337,20 +391,20 @@ struct SettingsView: View {
                     value: inertiaDecayBinding,
                     range: 0.85...0.99,
                     step: 0.005,
-                    currentText: { String(format: "Current %.3f", $0) },
+                    currentText: { String(format: model.text("Current %.3f", "当前 %.3f"), $0) },
                     minText: "0.850",
                     maxText: "0.990",
                     disabled: !model.isScrollInertiaEnabled
                 )
             }
 
-            SettingsGroup(title: "Reliability") {
+            SettingsGroup(title: model.text("Reliability", "可靠性")) {
                 sliderRow(
                     labels: model.uiLabels(for: \.errorResistance),
                     value: errorResistanceBinding,
                     range: 0...10,
                     step: 1,
-                    currentText: { "Current \(Int($0))" },
+                    currentText: { model.text("Current \(Int($0))", "当前 \(Int($0))") },
                     minText: "0",
                     maxText: "10"
                 )
@@ -362,51 +416,51 @@ struct SettingsView: View {
 
     private var diagnosticsPane: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: "Actions") {
-                actionRow(title: "Grant Accessibility Access", action: model.grantAccessibilityAccess)
+            SettingsGroup(title: model.text("Actions", "操作")) {
+                actionRow(title: model.text("Grant Accessibility Access", "授予辅助功能权限"), action: model.grantAccessibilityAccess)
                 sectionDivider
-                actionRow(title: "Restart Input Pipeline", action: model.restartInputPipeline)
+                actionRow(title: model.text("Restart Input Pipeline", "重启输入通道"), action: model.restartInputPipeline)
                 sectionDivider
-                actionRow(title: "Refresh Touch Connection", action: model.refreshTouchConnection)
+                actionRow(title: model.text("Refresh Touch Connection", "刷新触摸连接"), action: model.refreshTouchConnection)
                 sectionDivider
-                actionRow(title: "Reset Diagnostics", action: model.resetDiagnostics)
+                actionRow(title: model.text("Reset Diagnostics", "重置诊断信息"), action: model.resetDiagnostics)
                 sectionDivider
-                actionRow(title: "Open Fullscreen Test Environment") {
+                actionRow(title: model.text("Open Fullscreen Test Environment", "打开全屏测试环境")) {
                     (NSApp.delegate as? AppDelegate)?.showDebugOverlay()
                 }
             }
 
-            SettingsGroup(title: "Live Diagnostics") {
-                diagnosticsTextLine("Status", model.suggestedBlocker())
-                diagnosticsTextLine("Accessibility (Cached)", model.isAccessibilityAccessGranted ? "Granted" : "Missing")
-                diagnosticsTextLine("Accessibility (Live)", model.accessibilityTrustedNow ? "Granted" : "Missing")
-                diagnosticsTextLine("Input Enabled", model.isPublishingMouseEventsEnabled ? "Yes" : "No")
-                diagnosticsTextLine("Connection", String(describing: model.connectionState))
-                diagnosticsTextLine("Connected Screens", "\(model.connectedScreens.count)")
-                diagnosticsTextLine("Assigned Screen", model.connectedTouchscreen?.name ?? "(Auto)")
-                diagnosticsTextLine("Touch Reports", "\(model.touchUpdateCount)")
-                diagnosticsTextLine("Last Active Touches", "\(model.lastActiveTouchCount)")
-                diagnosticsTextLine("Gesture Decisions", "\(model.gestureDecisionCount)")
-                diagnosticsTextLine("Current Gesture", model.currentGestureName)
-                diagnosticsTextLine("Current Action", model.currentActionName)
-                diagnosticsTextLine("Last Gesture -> Action", "\(model.lastGestureName) -> \(model.lastActionName)")
-                diagnosticsTextLine("Input Frame", "\(model.inputProcessFrameID)")
-                diagnosticsTextLine("Input Active Touches", "\(model.inputActiveTouchCount)")
-                diagnosticsTextLine("3F Session", model.threeFingerTracking ? "Active" : "Idle")
-                diagnosticsTextLine("3F Triggered", model.threeFingerTriggered ? "Yes" : "No")
-                diagnosticsTextLine("3F Touches / Upward", "\(model.threeFingerTouchCount) / \(model.threeFingerUpwardTouchCount)")
-                diagnosticsTextLine("3F Travel V / H", String(format: "%.1f / %.1f mm", model.threeFingerVerticalTravelMM, model.threeFingerHorizontalTravelMM))
-                diagnosticsTextLine("HID Connect / Disconnect", "\(model.hidConnectCount) / \(model.hidDisconnectCount)")
-                diagnosticsTextLine("Last Touch Update", formatDate(model.lastTouchUpdateAt))
+            SettingsGroup(title: model.text("Live Diagnostics", "实时诊断")) {
+                diagnosticsTextLine(model.text("Status", "状态"), model.suggestedBlocker())
+                diagnosticsTextLine(model.text("Accessibility (Cached)", "辅助功能（缓存）"), model.isAccessibilityAccessGranted ? model.text("Granted", "已授权") : model.text("Missing", "未授权"))
+                diagnosticsTextLine(model.text("Accessibility (Live)", "辅助功能（实时）"), model.accessibilityTrustedNow ? model.text("Granted", "已授权") : model.text("Missing", "未授权"))
+                diagnosticsTextLine(model.text("Input Enabled", "输入已启用"), model.isPublishingMouseEventsEnabled ? model.text("Yes", "是") : model.text("No", "否"))
+                diagnosticsTextLine(model.text("Connection", "连接"), connectionStateText)
+                diagnosticsTextLine(model.text("Connected Screens", "已连接显示器"), "\(model.connectedScreens.count)")
+                diagnosticsTextLine(model.text("Assigned Screen", "指定显示器"), model.connectedTouchscreen?.name ?? model.text("(Auto)", "（自动）"))
+                diagnosticsTextLine(model.text("Touch Reports", "触摸报告"), "\(model.touchUpdateCount)")
+                diagnosticsTextLine(model.text("Last Active Touches", "最近活动触点"), "\(model.lastActiveTouchCount)")
+                diagnosticsTextLine(model.text("Gesture Decisions", "手势判定"), "\(model.gestureDecisionCount)")
+                diagnosticsTextLine(model.text("Current Gesture", "当前手势"), model.currentGestureName)
+                diagnosticsTextLine(model.text("Current Action", "当前操作"), model.currentActionName)
+                diagnosticsTextLine(model.text("Last Gesture -> Action", "最近手势 → 操作"), "\(model.lastGestureName) -> \(model.lastActionName)")
+                diagnosticsTextLine(model.text("Input Frame", "输入帧"), "\(model.inputProcessFrameID)")
+                diagnosticsTextLine(model.text("Input Active Touches", "活动输入触点"), "\(model.inputActiveTouchCount)")
+                diagnosticsTextLine(model.text("3F Session", "三指会话"), model.threeFingerTracking ? model.text("Active", "活动") : model.text("Idle", "空闲"))
+                diagnosticsTextLine(model.text("3F Triggered", "三指已触发"), model.threeFingerTriggered ? model.text("Yes", "是") : model.text("No", "否"))
+                diagnosticsTextLine(model.text("3F Touches / Upward", "三指触点 / 上滑"), "\(model.threeFingerTouchCount) / \(model.threeFingerUpwardTouchCount)")
+                diagnosticsTextLine(model.text("3F Travel V / H", "三指位移 纵 / 横"), String(format: "%.1f / %.1f mm", model.threeFingerVerticalTravelMM, model.threeFingerHorizontalTravelMM))
+                diagnosticsTextLine(model.text("HID Connect / Disconnect", "HID 连接 / 断开"), "\(model.hidConnectCount) / \(model.hidDisconnectCount)")
+                diagnosticsTextLine(model.text("Last Touch Update", "最近触摸更新"), formatDate(model.lastTouchUpdateAt))
 
                 if !model.diagnosticsEvents.isEmpty {
                     sectionDivider
-                    eventBlock(title: "Recent Diagnostics", events: Array(model.diagnosticsEvents.prefix(8)))
+                    eventBlock(title: model.text("Recent Diagnostics", "最近诊断"), events: Array(model.diagnosticsEvents.prefix(8)))
                 }
 
                 if !model.recentGestureEvents.isEmpty {
                     sectionDivider
-                    eventBlock(title: "Recent Gesture Stream", events: Array(model.recentGestureEvents.prefix(10)))
+                    eventBlock(title: model.text("Recent Gesture Stream", "最近手势流"), events: Array(model.recentGestureEvents.prefix(10)))
                 }
             }
 
@@ -416,16 +470,16 @@ struct SettingsView: View {
     private var accessBanner: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Accessibility Access Required")
+                Text(model.text("Accessibility Access Required", "需要辅助功能权限"))
                     .font(.headline)
-                Text("TouchMyMac needs Accessibility access before macOS will accept the injected mouse and keyboard events.")
+                Text(model.text("TouchPane needs Accessibility access before macOS will accept the injected mouse and keyboard events.", "TouchPane 需要辅助功能权限，macOS 才会接受它发送的鼠标和键盘事件。"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Button("Grant Access") {
+            Button(model.text("Grant Access", "授予权限")) {
                 model.grantAccessibilityAccess()
             }
             .buttonStyle(.borderedProminent)
@@ -482,7 +536,7 @@ struct SettingsView: View {
             .foregroundStyle(.secondary)
 
             if disabled {
-                Text("Enable Scroll Inertia to adjust this.")
+                Text(model.text("Enable Scroll Inertia to adjust this.", "启用滚动惯性后才能调整此项。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -549,18 +603,18 @@ struct SettingsView: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 if let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
-                    Text("TouchMyMac v\(versionString)")
+                    Text("TouchPane v\(versionString)")
                         .font(.headline)
                 }
 
-                Text("Touch input for macOS")
+                Text(model.text("Touch input for macOS", "macOS 触摸输入"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Link(destination: URL(string: "https://github.com/jinghuichen/touchMyMac")!) {
+            Link(destination: URL(string: "https://github.com/XLARIC/TouchPane")!) {
                 Label("GitHub", systemImage: "link")
             }
         }

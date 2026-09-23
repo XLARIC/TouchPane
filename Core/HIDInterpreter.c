@@ -11,8 +11,10 @@
 #include <mach/mach_port.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/hid/IOHIDManager.h>
+#include <IOKit/hidsystem/IOHIDLib.h>
 
 #include <CoreGraphics/CoreGraphics.h>
+#include <dispatch/dispatch.h>
 
 #pragma mark - Global variables
 
@@ -21,6 +23,86 @@ static void* gTouchManager;
 static CFRunLoopRef gRunLoopRef;
 
 static IOHIDManagerRef gHidManager;
+static IOHIDManagerRef gWingCoolManager;
+static CFRunLoopTimerRef gWingCoolRetryTimer;
+static Boolean gWingCoolOpened;
+static Boolean gWingCoolRequestedAccess;
+static int gWingCoolLastAccess = -1;
+
+static void WingCoolReport(void *context, IOReturn result, void *sender,
+                           IOHIDReportType type, uint32_t reportID,
+                           uint8_t *report, CFIndex length) {
+    if (result != kIOReturnSuccess || type != kIOHIDReportTypeInput || reportID != 7) return;
+    // Descriptor: report ID, buttons, little-endian absolute X/Y, wheel.
+    CFIndex offset = length == 7 && report[0] == 7 ? 1 : 0;
+    if (length - offset != 6) return;
+    uint16_t x = report[offset + 1] | (report[offset + 2] << 8);
+    uint16_t y = report[offset + 3] | (report[offset + 4] << 8);
+    if (x > 16383 || y > 9599) return;
+    TouchInputManagerAbsoluteMouse(context, x / 16383.0, y / 9599.0,
+                                   report[offset] & 7, (int8_t)report[offset + 5]);
+}
+
+static void WingCoolConnected(void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
+    fprintf(stderr, "WingCool mouse connected result=0x%x\n", result); fflush(stderr);
+    if (result == kIOReturnSuccess) TouchInputManagerDidConnectTouchscreen(context);
+}
+
+static void WingCoolRemoved(void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
+    TouchInputManagerDidDisconnectTouchscreen(context);
+}
+
+static void WingCoolTryOpen(CFRunLoopTimerRef timer, void *delegate) {
+    if (!gWingCoolManager || gWingCoolOpened || !TouchInputManagerCanPostMouseEvents(delegate)) return;
+    IOHIDAccessType access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
+    if (access != kIOHIDAccessTypeGranted && !gWingCoolRequestedAccess) {
+        gWingCoolRequestedAccess = TRUE;
+        IOHIDRequestAccess(kIOHIDRequestTypeListenEvent);
+        access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
+    }
+    if (access != kIOHIDAccessTypeGranted || gWingCoolLastAccess == (int)access) return;
+    gWingCoolLastAccess = (int)access;
+    IOReturn result = IOHIDManagerOpen(gWingCoolManager, kIOHIDOptionsTypeSeizeDevice);
+    gWingCoolOpened = result == kIOReturnSuccess;
+    fprintf(stderr, "WingCool exclusive open=0x%x listen=%d\n", result, access); fflush(stderr);
+}
+
+static Boolean OpenWingCoolMouse(void *delegate) {
+    int vendor = 0x27c0, product = 0x0858, page = 1, usage = 2;
+    const void *keys[] = {CFSTR(kIOHIDVendorIDKey), CFSTR(kIOHIDProductIDKey),
+                          CFSTR(kIOHIDPrimaryUsagePageKey), CFSTR(kIOHIDPrimaryUsageKey)};
+    CFNumberRef values[] = {CFNumberCreate(NULL, kCFNumberIntType, &vendor),
+                           CFNumberCreate(NULL, kCFNumberIntType, &product),
+                           CFNumberCreate(NULL, kCFNumberIntType, &page),
+                           CFNumberCreate(NULL, kCFNumberIntType, &usage)};
+    CFDictionaryRef match = CFDictionaryCreate(NULL, keys, (const void **)values, 4,
+                                               &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    gWingCoolManager = IOHIDManagerCreate(NULL, kIOHIDManagerOptionNone);
+    IOHIDManagerSetDeviceMatching(gWingCoolManager, match);
+    CFRelease(match);
+    for (int i = 0; i < 4; ++i) CFRelease(values[i]);
+    CFSetRef devices = IOHIDManagerCopyDevices(gWingCoolManager);
+    Boolean present = devices && CFSetGetCount(devices) > 0;
+    if (devices) CFRelease(devices);
+    if (!present) { CFRelease(gWingCoolManager); gWingCoolManager = NULL; return FALSE; }
+    fprintf(stderr, "WingCool absolute mouse detected; AX=%d listen=%d\n",
+            TouchInputManagerCanPostMouseEvents(delegate), IOHIDCheckAccess(kIOHIDRequestTypeListenEvent));
+    fflush(stderr);
+    IOHIDManagerRegisterInputReportCallback(gWingCoolManager, WingCoolReport, delegate);
+    IOHIDManagerRegisterDeviceMatchingCallback(gWingCoolManager, WingCoolConnected, delegate);
+    IOHIDManagerRegisterDeviceRemovalCallback(gWingCoolManager, WingCoolRemoved, delegate);
+    IOHIDManagerScheduleWithRunLoop(gWingCoolManager, CFRunLoopGetMain(), kCFRunLoopCommonModes);
+    // Wait for the user's grants; activate automatically without requiring a restart.
+    gWingCoolOpened = FALSE;
+    gWingCoolRequestedAccess = FALSE;
+    gWingCoolLastAccess = -1;
+    CFRunLoopTimerContext timerContext = {0, delegate, NULL, NULL, NULL};
+    gWingCoolRetryTimer = CFRunLoopTimerCreate(NULL, CFAbsoluteTimeGetCurrent() + 1, 1, 0, 0,
+                                              WingCoolTryOpen, &timerContext);
+    CFRunLoopAddTimer(CFRunLoopGetMain(), gWingCoolRetryTimer, kCFRunLoopCommonModes);
+    WingCoolTryOpen(NULL, delegate);
+    return TRUE;
+}
 
 IOHIDQueueRef gQueue;
 
@@ -41,6 +123,12 @@ CFMutableDictionaryRef  gStoredInputValues; //
 CFIndex gContactCount = 1;
 CFIndex gHybridOffset = 0; // how many touches are already sent until this point?
 Boolean gTouchscreenUsesHybridMode = FALSE;
+
+// Some modern HID stacks do not deliver values through an IOHIDQueue when
+// elements are added after the queue has already started. Keep a generation
+// counter so the manager callback can coalesce all element updates belonging
+// to one input report and dispatch them together.
+uint64_t gInputValueGeneration = 0;
 
 
 CFMutableArrayRef gContactIdentifiers;
@@ -356,14 +444,14 @@ void DispatchTouchDataForCollection(IOHIDElementRef collection) {
                     CGFloat min = (CGFloat)IOHIDElementGetLogicalMin(element);
                     CGFloat max = (CGFloat)IOHIDElementGetLogicalMax(element);
                     CGFloat curr = (CGFloat)value;
-                    x = ( (curr - min) / (max - min) ) + min;
+                    x = (curr - min) / (max - min);
                 }
                 
                 else if (usage == kHIDUsage_GD_Y) {
                     CGFloat min = (CGFloat)IOHIDElementGetLogicalMin(element);
                     CGFloat max = (CGFloat)IOHIDElementGetLogicalMax(element);
                     CGFloat curr = (CGFloat)value;
-                    y = ( (curr - min) / (max - min) ) + min;
+                    y = (curr - min) / (max - min);
                 }
             } //kHIDPage_GenericDesktop
             
@@ -481,20 +569,27 @@ static void Handle_InputValueCallback (
         gAreElementRefsSet = 1;
     }
     
-    IOHIDElementRef elem = IOHIDValueGetElement(inIOHIDValueRef);
-    
-    if (gQueue == NULL) {
-        // If we haven't set up the device queue yet, there's nowhere to route values.
-        // The matching callback should create/schedule/start gQueue; this guard avoids a crash
-        // and lets the system retry when the queue becomes available.
-        return;
-    }
+    // Read every value directly from the manager callback. The original code
+    // dynamically added elements to an already-running IOHIDQueue and then
+    // waited for the queue callback. On newer macOS versions, some USB touch
+    // controllers never deliver through that queue, even though this callback
+    // receives their values normally.
+    StoreInputValue(inIOHIDValueRef);
 
-    Boolean added = IOHIDQueueContainsElement(gQueue, elem);
-    if(!added) {
-        IOHIDQueueAddElement(gQueue, elem);
-        StoreInputValue(inIOHIDValueRef);
-    }
+    // IOHID calls us once per changed element, not once per complete report.
+    // A very short debounce lets all X/Y/tip/contact-count values from the same
+    // report arrive before DispatchTouches reads the stored snapshot.
+    uint64_t generation = ++gInputValueGeneration;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_USEC),
+                   dispatch_get_main_queue(), ^{
+        if (generation != gInputValueGeneration ||
+            gHidManager == NULL ||
+            gStoredInputValues == NULL ||
+            gTouchCollectionElements == NULL) {
+            return;
+        }
+        DispatchTouches();
+    });
     
 }
 
@@ -530,9 +625,9 @@ static void Handle_DeviceMatchingCallback(
         // this is not a valid HID queue reference!
     }
     
-    IOHIDQueueRegisterValueAvailableCallback(queue, Handle_QueueValueAvailable, NULL);
-    IOHIDQueueScheduleWithRunLoop(queue, gRunLoopRef, kCFRunLoopCommonModes);
-    IOHIDQueueStart(queue);
+    // Retain an empty queue as the active-device sentinel used by the existing
+    // single-touchscreen lifecycle. Input values themselves are handled by
+    // Handle_InputValueCallback above.
     gQueue = queue;
     
     TouchInputManagerDidConnectTouchscreen(gTouchManager);
@@ -619,9 +714,10 @@ void OpenHIDManager(void *delegate) {
     gTouchManager = delegate;
     
     // If Open is called twice within one process, make sure we start clean.
-    if (gHidManager != NULL) {
+    if (gHidManager != NULL || gWingCoolManager != NULL) {
         CloseHIDManager();
     }
+    if (OpenWingCoolMouse(delegate)) return;
     
     gHidManager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
     
@@ -694,6 +790,17 @@ void OpenHIDManager(void *delegate) {
 
 
 void CloseHIDManager(void) {
+    if (gWingCoolRetryTimer != NULL) {
+        CFRunLoopTimerInvalidate(gWingCoolRetryTimer);
+        CFRelease(gWingCoolRetryTimer);
+        gWingCoolRetryTimer = NULL;
+    }
+    if (gWingCoolManager != NULL) {
+        IOHIDManagerUnscheduleFromRunLoop(gWingCoolManager, CFRunLoopGetMain(), kCFRunLoopCommonModes);
+        IOHIDManagerClose(gWingCoolManager, kIOHIDOptionsTypeNone);
+        CFRelease(gWingCoolManager);
+        gWingCoolManager = NULL;
+    }
     if (gQueue != NULL) {
         IOHIDQueueUnscheduleFromRunLoop(gQueue, gRunLoopRef, kCFRunLoopCommonModes);
         IOHIDQueueStop(gQueue);
@@ -722,6 +829,7 @@ void CloseHIDManager(void) {
     }
 
     gAreElementRefsSet = 0;
+    ++gInputValueGeneration; // invalidate any pending coalesced dispatch block
     gContactCount = 1;
     gHybridOffset = 0;
     gTouchscreenUsesHybridMode = FALSE;

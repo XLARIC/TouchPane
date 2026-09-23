@@ -1,6 +1,6 @@
 //
 //  DebugView.swift
-//  TouchMyMac
+//  TouchPane
 //
 //  Created by Sebastian Hueber on 11.02.23.
 //
@@ -11,13 +11,13 @@ import TouchUpCore
 
 struct DebugView: View {
     
-    @ObservedObject var model: TouchMyMac
+    @ObservedObject var model: TouchPane
     
     let closeAction: ()->Void
     
     var pixelsPerMM: CGFloat
     
-    init(model: TouchMyMac, closeAction: @escaping ()->Void) {
+    init(model: TouchPane, closeAction: @escaping ()->Void) {
         self.model = model
         self.pixelsPerMM = model.touchscreen()?.pixelsPerMM() ?? 30
         self.closeAction = closeAction
@@ -78,11 +78,11 @@ struct DebugView: View {
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Input Frame: \(model.inputProcessFrameID)")
-                            Text("Input Active Touches: \(model.inputActiveTouchCount)")
-                            Text("3F Session: \(model.threeFingerTracking ? "Active" : "Idle")")
-                            Text("3F Triggered: \(model.threeFingerTriggered ? "Yes" : "No")")
-                            Text("3F Touches/Upward: \(model.threeFingerTouchCount)/\(model.threeFingerUpwardTouchCount)")
+                            Text("\(model.text("Input Frame", "输入帧")): \(model.inputProcessFrameID)")
+                            Text("\(model.text("Input Active Touches", "活动输入触点")): \(model.inputActiveTouchCount)")
+                            Text("\(model.text("3F Session", "三指会话")): \(model.threeFingerTracking ? model.text("Active", "活动") : model.text("Idle", "空闲"))")
+                            Text("\(model.text("3F Triggered", "三指已触发")): \(model.threeFingerTriggered ? model.text("Yes", "是") : model.text("No", "否"))")
+                            Text("\(model.text("3F Touches/Upward", "三指触点/上滑")): \(model.threeFingerTouchCount)/\(model.threeFingerUpwardTouchCount)")
                             Text(String(format: "3F Travel V/H: %.1f / %.1f mm", model.threeFingerVerticalTravelMM, model.threeFingerHorizontalTravelMM))
                         }
                         .font(.system(size: 24, weight: .semibold, design: .monospaced))
@@ -102,9 +102,9 @@ struct DebugView: View {
                 closeAction()
             }, label: {
                 HStack {
-                    Text("Close overlay with ")
+                    Text(model.text("Close overlay with ", "关闭调试层："))
                     Label("W", systemImage: "command.square.fill")
-                    Text("or by mouse-clicking here")
+                    Text(model.text("or by mouse-clicking here", "，或用鼠标点击这里"))
                 }
                 .font(.largeTitle)
                 .modify {
@@ -127,7 +127,7 @@ struct DebugView: View {
 
 struct DebugView_Previews: PreviewProvider {
     static var previews: some View {
-        DebugView(model: TouchMyMac(), closeAction: {})
+        DebugView(model: TouchPane(), closeAction: {})
     }
 }
 

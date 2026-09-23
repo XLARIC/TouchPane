@@ -4,8 +4,16 @@
 # Xcode user data
 *.xcuserstate
 xcuserdata/
-TouchMyMac.xcodeproj/project.xcworkspace/xcshareddata/
+TouchPane.xcodeproj/project.xcworkspace/xcshareddata/
 
 # Build artifacts
 DerivedData/
 build/
+dist/
+
+# Signing material must never be committed
+*.cer
+*.crt
+*.key
+*.p12
+*.provisionprofile
