@@ -72,14 +72,40 @@ Download the latest `.dmg` and its `.sha256` file from
 [GitHub Releases](https://github.com/XLARIC/TouchPane/releases).
 
 The free release is signed with the project's stable self-signed certificate.
-It is **not Apple-notarized**, so macOS will not trust it automatically:
+It is **not Apple-notarized**, so macOS will not trust it automatically.
+
+### If macOS says it cannot verify the DMG
+
+You may see an alert saying Apple cannot verify
+`TouchPane-1.2.0-macOS-universal.dmg` for malicious software, with only
+**Done** and **Move to Trash** buttons. This is expected for the current
+self-signed release, but only continue if you downloaded it from this
+repository and its SHA-256 checksum matches:
+
+1. Click **Done**. Do not move the DMG to the Trash.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll down to **Security**, find the message that the TouchPane DMG was
+   blocked, and click **Open Anyway**.
+4. Authenticate with your Mac password or Touch ID, then confirm **Open**.
+5. After the DMG opens, drag `TouchPane.app` to `Applications`.
+6. Open TouchPane. If macOS blocks the app itself, repeat the same
+   **Privacy & Security → Open Anyway** steps for `TouchPane.app`.
+7. Grant TouchPane access under **Accessibility** and **Input Monitoring**,
+   then quit and reopen it.
+
+Apple notes that **Open Anyway** is available for about one hour after an
+attempted launch. See
+[Apple's official instructions](https://support.apple.com/102445). Do not
+disable Gatekeeper globally.
+
+In short, the complete first-launch sequence is:
 
 1. Verify the downloaded DMG checksum.
-2. Drag `TouchPane.app` to `Applications`.
-3. Try to open TouchPane once.
-4. Open **System Settings → Privacy & Security** and choose **Open Anyway**.
-5. Grant TouchPane access under **Accessibility** and **Input Monitoring**.
-6. Quit and reopen TouchPane after granting both permissions.
+2. Approve and open the DMG using **Privacy & Security → Open Anyway** if
+   necessary.
+3. Drag `TouchPane.app` to `Applications`.
+4. Approve TouchPane itself the same way if macOS asks again.
+5. Grant Accessibility and Input Monitoring, then reopen TouchPane.
 
 You normally need to approve the permissions only once. They are preserved
 only when later releases keep the same app name, bundle identifier, install
