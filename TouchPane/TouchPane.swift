@@ -990,15 +990,34 @@ enum ConnectionState: Int {
     case connectedPreferred // connected with stored cues matching perfectly
     
     var image: NSImage? {
+        Self.menuBarImage
+    }
+
+    private static let menuBarImage: NSImage? = {
         let description = NSLocalizedString("TouchPane gesture control", comment: "Menu bar icon accessibility description")
         let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        let image = NSImage(systemSymbolName: "hand.tap", accessibilityDescription: description)?
-            .withSymbolConfiguration(configuration)
+        guard let symbol = NSImage(systemSymbolName: "hand.tap", accessibilityDescription: description)?
+            .withSymbolConfiguration(configuration) else { return nil }
 
-        image?.isTemplate = true
-        
+        // SF Symbols carry text baselines. A plain image canvas lets the status
+        // button center the complete gesture instead of its typographic bounds.
+        let canvasSize = NSSize(width: 18, height: 18)
+        let image = NSImage(size: canvasSize, flipped: false) { canvas in
+            let symbolRect = NSRect(
+                x: canvas.midX - symbol.size.width / 2,
+                y: canvas.midY - symbol.size.height / 2,
+                width: symbol.size.width,
+                height: symbol.size.height
+            )
+            symbol.draw(in: symbolRect, from: .zero, operation: .sourceOver,
+                        fraction: 1, respectFlipped: true, hints: nil)
+            return true
+        }
+        image.alignmentRect = NSRect(origin: .zero, size: canvasSize)
+        image.accessibilityDescription = description
+        image.isTemplate = true
         return image
-    }
+    }()
     
     var isConnected: Bool {
         return self == .connectedPreferred || self == .connectedHotPlug

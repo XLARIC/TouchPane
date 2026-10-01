@@ -50,7 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusItem.menu = self.statusMenu
         self.statusItem.button?.image = self.model.connectionState.image
         self.statusItem.button?.imagePosition = .imageOnly
-        self.statusItem.button?.imageScaling = .scaleProportionallyDown
+        self.statusItem.button?.imageScaling = .scaleNone
         self.statusItem.button?.imageHugsTitle = true
         self.statusItem.button?.toolTip = "TouchPane"
         

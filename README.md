@@ -13,7 +13,7 @@ Hueber.
 
 ## What This Fork Adds
 
-TouchPane 1.3.0 contains the following changes and additions:
+TouchPane 1.3.1 contains the following changes and additions:
 
 - Added WingCool/ASM-156UCT absolute-mouse HID support for USB device
   `VID 27c0`, `PID 0858`.
@@ -34,7 +34,8 @@ TouchPane 1.3.0 contains the following changes and additions:
   toolbar, and system controls. On macOS 27 it automatically adopts the
   current System Settings/Finder appearance and Liquid Glass materials.
 - Changed the menu bar icon to the same hand-tap gesture symbol used by the
-  Gestures settings pane, sized and spaced for correct menu bar alignment.
+  Gestures settings pane, rendered on a centered canvas for correct vertical
+  menu bar alignment.
 - Added a stable self-signed build and installation workflow to help macOS keep
   Accessibility and Input Monitoring permissions across matching upgrades.
 - Added live HID, touch, gesture, action, and permission diagnostics.
@@ -87,7 +88,7 @@ It is **not Apple-notarized**, so macOS will not trust it automatically.
 ### If macOS says it cannot verify the DMG
 
 You may see an alert saying Apple cannot verify
-`TouchPane-1.3.0-macOS-universal.dmg` for malicious software, with only
+`TouchPane-1.3.1-macOS-universal.dmg` for malicious software, with only
 **Done** and **Move to Trash** buttons. This is expected for the current
 self-signed release, but only continue if you downloaded it from this
 repository and its SHA-256 checksum matches:
@@ -125,7 +126,7 @@ Verify a release from Terminal:
 
 ```bash
 cd ~/Downloads
-shasum -a 256 -c TouchPane-1.3.0-macOS-universal.dmg.sha256
+shasum -a 256 -c TouchPane-1.3.1-macOS-universal.dmg.sha256
 ```
 
 ## Build from Source

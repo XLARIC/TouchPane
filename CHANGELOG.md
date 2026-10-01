@@ -2,6 +2,12 @@
 
 All notable TouchPane changes are documented in this file.
 
+## 1.3.1
+
+- Fixed the menu bar gesture icon's vertical alignment by drawing the complete
+  symbol into a centered template image without SF Symbols text-baseline
+  metadata.
+
 ## 1.3.0
 
 - Added an optional native macOS Launch at Login setting with approval status
