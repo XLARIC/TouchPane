@@ -47,7 +47,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 struct SettingsView: View {
 
     @ObservedObject var model: TouchPane
-    @State private var selectedPane: SettingsPane = .general
+    @State private var selectedPane: SettingsPane? = .general
 
     static let diagnosticsDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -113,6 +113,17 @@ struct SettingsView: View {
         Binding(get: { model.appAppearance }, set: { model.appAppearance = $0 })
     }
 
+    private var launchAtLoginSelection: Binding<Bool> {
+        Binding(
+            get: { model.launchAtLoginEnabled },
+            set: { model.setLaunchAtLogin($0) }
+        )
+    }
+
+    private var activePane: SettingsPane {
+        selectedPane ?? .general
+    }
+
     private var connectionStateText: String {
         switch model.connectionState {
         case .uncertain: return model.text("Checking", "检查中")
@@ -123,74 +134,78 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-            Divider()
-            detailPane
+        Group {
+            if #available(macOS 13.0, *) {
+                NavigationSplitView {
+                    sidebar
+                        .navigationSplitViewColumnWidth(min: 210, ideal: 238, max: 280)
+                } detail: {
+                    detailPane
+                }
+                .navigationSplitViewStyle(.balanced)
+            } else {
+                HStack(spacing: 0) {
+                    sidebar
+                        .frame(width: 220)
+                    Divider()
+                    detailPane
+                }
+            }
         }
-        .frame(minWidth: 780, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
+        .frame(minWidth: 820, idealWidth: 920, maxWidth: .infinity, minHeight: 600, idealHeight: 680, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            model.refreshLaunchAtLoginStatus()
+        }
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("TouchPane")
-                    .font(.title3.weight(.semibold))
-                Text(model.text("Preferences", "偏好设置"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 20)
-            .padding(.bottom, 14)
-
-            VStack(spacing: 4) {
+        List(selection: $selectedPane) {
+            Section(model.text("Settings", "设置")) {
                 ForEach(SettingsPane.allCases) { pane in
-                    paneButton(pane)
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: pane.symbol)
+                            .font(.system(size: 15))
+                            .frame(width: 20)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(pane.title(model))
+                                .font(.system(size: 13, weight: .semibold))
+                            Text(pane.subtitle(model))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .tag(pane)
                 }
             }
-            .padding(.horizontal, 10)
-
-            Spacer()
         }
-        .frame(width: 210)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            sidebarStatus
+        }
     }
 
-    private func paneButton(_ pane: SettingsPane) -> some View {
-        let isSelected = selectedPane == pane
-
-        return Button {
-            selectedPane = pane
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: pane.symbol)
-                    .frame(width: 18)
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(pane.title(model))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.primary)
-                    Text(pane.subtitle(model))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
-            )
-            .contentShape(Rectangle())
+    private var sidebarStatus: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(model.connectionState.isConnected ? Color.green : Color.secondary)
+                .frame(width: 7, height: 7)
+            Text(connectionStateText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
     }
 
     private var detailPane: some View {
@@ -198,7 +213,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 pageHeader
 
-                switch selectedPane {
+                switch activePane {
                 case .general:
                     generalPane
                 case .gestures:
@@ -209,16 +224,19 @@ struct SettingsView: View {
                     diagnosticsPane
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 860, alignment: .leading)
+            .padding(.horizontal, 30)
+            .padding(.top, 24)
+            .padding(.bottom, 34)
+            .frame(maxWidth: 900, alignment: .leading)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var pageHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(selectedPane.title(model))
-                .font(.system(size: 29, weight: .bold))
-            Text(selectedPane.subtitle(model))
+            Text(activePane.title(model))
+                .font(.system(size: 28, weight: .bold))
+            Text(activePane.subtitle(model))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -262,6 +280,44 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 8)
+            }
+
+            SettingsGroup(title: model.text("App", "应用")) {
+                settingToggleRow(
+                    labels: (
+                        model.text("Launch at Login", "登录时自动启动"),
+                        model.text("Open TouchPane automatically after you sign in to your Mac.", "登录 Mac 后自动打开 TouchPane。")
+                    ),
+                    isOn: launchAtLoginSelection
+                )
+                .disabled(!model.isLaunchAtLoginSupported)
+
+                if model.launchAtLoginRequiresApproval {
+                    sectionDivider
+                    HStack(alignment: .center, spacing: 12) {
+                        Label(
+                            model.text("Approval is required in System Settings.", "需要在系统设置中批准。"),
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundStyle(.orange)
+                        .font(.callout)
+
+                        Spacer()
+
+                        Button(model.text("Open Login Items", "打开登录项")) {
+                            model.openLoginItemsSettings()
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+
+                if let errorDescription = model.launchAtLoginErrorDescription {
+                    sectionDivider
+                    Label(errorDescription, systemImage: "xmark.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .padding(.vertical, 8)
+                }
             }
 
             SettingsGroup(title: model.text("Input", "输入")) {
@@ -639,14 +695,14 @@ private struct SettingsGroup<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
-            .padding(16)
+            .padding(18)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.82))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 0.5)
             )
         }
     }

@@ -61,6 +61,10 @@ smoke test:
 - System, Light, and Dark appearance modes work.
 - System, English, Simplified Chinese, and Traditional Chinese modes work.
 - Settings sidebar rows respond across their full width.
+- The Launch at Login switch registers and unregisters TouchPane correctly;
+  any required approval opens System Settings → Login Items.
+- On macOS 27, Settings uses the native sidebar and unified toolbar appearance.
+- The menu bar uses the hand-tap gesture icon.
 
 ## Publish
 

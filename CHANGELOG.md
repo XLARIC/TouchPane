@@ -2,6 +2,19 @@
 
 All notable TouchPane changes are documented in this file.
 
+## 1.3.0
+
+- Added an optional native macOS Launch at Login setting with approval status
+  and a shortcut to Login Items in System Settings.
+- Rebuilt Settings around the native macOS split-view sidebar and unified
+  toolbar so macOS 27 supplies its current System Settings/Finder appearance;
+  sidebar explanatory subtitles remain visible and the complete row is
+  clickable.
+- Changed the menu bar status item to use the hand-tap gesture symbol and
+  corrected its size and alignment.
+- Preserved macOS 12 compatibility; Launch at Login is available on macOS 13
+  and later.
+
 ## 1.2.0
 
 - Renamed the application from TouchMyMac to TouchPane and adopted the

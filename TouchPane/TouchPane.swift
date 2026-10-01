@@ -7,6 +7,7 @@
 
 import AppKit
 import Combine
+import ServiceManagement
 import TouchUpCore
 
 enum AppLanguage: String, CaseIterable, Identifiable {
@@ -61,6 +62,9 @@ class TouchPane: NSObject, ObservableObject {
     @Published var appAppearance: AppAppearance = .system {
         didSet { UserDefaults.standard.set(appAppearance.rawValue, forKey: "appAppearance") }
     }
+    @Published private(set) var launchAtLoginEnabled = false
+    @Published private(set) var launchAtLoginRequiresApproval = false
+    @Published private(set) var launchAtLoginErrorDescription: String?
     
     
     var observers = [AnyCancellable]()
@@ -208,6 +212,67 @@ class TouchPane: NSObject, ObservableObject {
         case .light: return text("Light", "浅色")
         case .dark: return text("Dark", "深色")
         }
+    }
+
+    var isLaunchAtLoginSupported: Bool {
+        if #available(macOS 13.0, *) {
+            return true
+        }
+        return false
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        guard #available(macOS 13.0, *) else {
+            launchAtLoginErrorDescription = text(
+                "Launch at login requires macOS 13 or later.",
+                "登录时自动启动需要 macOS 13 或更高版本。"
+            )
+            return
+        }
+
+        launchAtLoginErrorDescription = nil
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+                addDiagnosticsEvent("Registered main app as a login item")
+            } else {
+                try SMAppService.mainApp.unregister()
+                addDiagnosticsEvent("Unregistered main app login item")
+            }
+        } catch {
+            launchAtLoginErrorDescription = error.localizedDescription
+            addDiagnosticsEvent("Failed to update login item: \(error.localizedDescription)")
+        }
+
+        refreshLaunchAtLoginStatus()
+    }
+
+    func refreshLaunchAtLoginStatus() {
+        guard #available(macOS 13.0, *) else {
+            launchAtLoginEnabled = false
+            launchAtLoginRequiresApproval = false
+            return
+        }
+
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            launchAtLoginEnabled = true
+            launchAtLoginRequiresApproval = false
+        case .requiresApproval:
+            launchAtLoginEnabled = true
+            launchAtLoginRequiresApproval = true
+        case .notRegistered, .notFound:
+            launchAtLoginEnabled = false
+            launchAtLoginRequiresApproval = false
+        @unknown default:
+            launchAtLoginEnabled = false
+            launchAtLoginRequiresApproval = false
+        }
+    }
+
+    func openLoginItemsSettings() {
+        guard #available(macOS 13.0, *) else { return }
+        SMAppService.openSystemSettingsLoginItems()
     }
     
     // MARK: - Attempt to automatically determine touch screen
@@ -399,6 +464,7 @@ class TouchPane: NSObject, ObservableObject {
         NotificationCenter.default.addObserver(self, selector: #selector(TouchPane.screenParametersDidChange), name: NSApplication.didChangeScreenParametersNotification, object: nil)
 
         initPreferences()
+        refreshLaunchAtLoginStatus()
         
         checkAccessibilityAccessGranted()
         addDiagnosticsEvent("Initialized model")
@@ -924,16 +990,10 @@ enum ConnectionState: Int {
     case connectedPreferred // connected with stored cues matching perfectly
     
     var image: NSImage? {
-        let image: NSImage?
-        
-        switch self {
-        case .uncertain:
-            image = NSImage(systemSymbolName: "rectangle.dashed", accessibilityDescription: nil)
-        case .disconnected:
-            image = NSImage(systemSymbolName: "rectangle.badge.xmark", accessibilityDescription: nil)
-        default:
-            image = NSImage(systemSymbolName: "hand.point.up.left", accessibilityDescription: nil)
-        }
+        let description = NSLocalizedString("TouchPane gesture control", comment: "Menu bar icon accessibility description")
+        let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let image = NSImage(systemSymbolName: "hand.tap", accessibilityDescription: description)?
+            .withSymbolConfiguration(configuration)
 
         image?.isTemplate = true
         

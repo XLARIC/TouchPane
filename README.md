@@ -13,7 +13,7 @@ Hueber.
 
 ## What This Fork Adds
 
-TouchPane 1.2.0 contains the following changes and additions:
+TouchPane 1.3.0 contains the following changes and additions:
 
 - Added WingCool/ASM-156UCT absolute-mouse HID support for USB device
   `VID 27c0`, `PID 0858`.
@@ -26,7 +26,15 @@ TouchPane 1.2.0 contains the following changes and additions:
   Chinese** language options. The default is **System**, with English as the
   fallback for unsupported system languages.
 - Fixed the Settings sidebar so the complete row is clickable, not only its
-  text.
+  text, while retaining each item's explanatory subtitle.
+- Added an optional **Launch at Login** setting backed by the native macOS
+  Login Items service, including approval status and a direct System Settings
+  shortcut.
+- Rebuilt Settings with the native macOS split-view sidebar, unified window
+  toolbar, and system controls. On macOS 27 it automatically adopts the
+  current System Settings/Finder appearance and Liquid Glass materials.
+- Changed the menu bar icon to the same hand-tap gesture symbol used by the
+  Gestures settings pane, sized and spaced for correct menu bar alignment.
 - Added a stable self-signed build and installation workflow to help macOS keep
   Accessibility and Input Monitoring permissions across matching upgrades.
 - Added live HID, touch, gesture, action, and permission diagnostics.
@@ -48,6 +56,7 @@ TouchPane 1.2.0 contains the following changes and additions:
 - Automatic or manual touchscreen-to-display assignment
 - Live input and gesture diagnostics
 - System-following appearance and language
+- Optional launch at login (macOS 13 or later)
 
 ## Tested Hardware
 
@@ -61,6 +70,7 @@ vary.
 ## Requirements
 
 - macOS 12 or later
+- macOS 13 or later for Launch at Login
 - A USB HID touchscreen
 - Accessibility permission
 - Input Monitoring permission for touch controllers that expose input through
@@ -77,7 +87,7 @@ It is **not Apple-notarized**, so macOS will not trust it automatically.
 ### If macOS says it cannot verify the DMG
 
 You may see an alert saying Apple cannot verify
-`TouchPane-1.2.0-macOS-universal.dmg` for malicious software, with only
+`TouchPane-1.3.0-macOS-universal.dmg` for malicious software, with only
 **Done** and **Move to Trash** buttons. This is expected for the current
 self-signed release, but only continue if you downloaded it from this
 repository and its SHA-256 checksum matches:
@@ -115,7 +125,7 @@ Verify a release from Terminal:
 
 ```bash
 cd ~/Downloads
-shasum -a 256 -c TouchPane-1.2.0-macOS-universal.dmg.sha256
+shasum -a 256 -c TouchPane-1.3.0-macOS-universal.dmg.sha256
 ```
 
 ## Build from Source

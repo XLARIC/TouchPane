@@ -46,8 +46,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         NSApp.appearance = self.model.appAppearance.nsAppearance
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.statusItem.menu = self.statusMenu
+        self.statusItem.button?.image = self.model.connectionState.image
+        self.statusItem.button?.imagePosition = .imageOnly
+        self.statusItem.button?.imageScaling = .scaleProportionallyDown
+        self.statusItem.button?.imageHugsTitle = true
+        self.statusItem.button?.toolTip = "TouchPane"
         
         self.observers.append(
             self.model.$connectionState
@@ -89,7 +94,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.model.touchManager.start()
         
         
-        if !model.isAccessibilityAccessGranted {
+        if !model.isAccessibilityAccessGranted || ProcessInfo.processInfo.arguments.contains("--show-settings") {
             self.showPreferences(nil)
         }
         
@@ -102,6 +107,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ aNotification: Notification) {
         // Insert code here to tear down your application
         self.model.touchManager.stop()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model.refreshLaunchAtLoginStatus()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -152,7 +161,7 @@ class SettingsWindow: NSWindow {
     static func window(model: TouchPane) -> SettingsWindow {
         let vc = NSHostingController(rootView: SettingsView(model:model))
         let window = SettingsWindow(contentRect: .zero,
-                                    styleMask: [.closable, .titled, .fullSizeContentView, .resizable],
+                                    styleMask: [.closable, .miniaturizable, .titled, .fullSizeContentView, .resizable],
                                     backing: .buffered,
                                     defer: true,
                                     screen: nil)
@@ -160,8 +169,15 @@ class SettingsWindow: NSWindow {
         window.title = model.text("TouchPane Settings", "TouchPane 设置")
         window.tabbingMode = .disallowed
         window.model = model
-        window.level = .popUpMenu
-        window.collectionBehavior = [.canJoinAllSpaces, .transient]
+        window.level = .normal
+        window.collectionBehavior = [.moveToActiveSpace]
+        window.isReleasedWhenClosed = false
+        window.titlebarAppearsTransparent = false
+        window.titleVisibility = .visible
+        window.toolbarStyle = .unified
+        window.toolbar = NSToolbar(identifier: "TouchPaneSettingsToolbar")
+        window.toolbar?.displayMode = .iconOnly
+        window.setFrameAutosaveName("TouchPaneSettingsWindow")
         
         let windowController = NSWindowController(window: window)
         
