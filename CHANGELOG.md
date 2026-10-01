@@ -2,6 +2,17 @@
 
 All notable TouchPane changes are documented in this file.
 
+## 1.3.2
+
+- Fixed the sidebar connection indicator to use actual USB touch-device
+  presence rather than display assignment, with explicit startup enumeration
+  and reliable removal/reconnection updates.
+- Kept the WingCool device watcher active when no device is attached at launch,
+  fixed the USB hot-plug timestamp, and preserved remaining devices when an
+  unrelated touch interface is removed.
+- Added the recognized touch-interface count to Diagnostics and regression
+  tests for the connection lifecycle.
+
 ## 1.3.1
 
 - Fixed the menu bar gesture icon's vertical alignment by drawing the complete

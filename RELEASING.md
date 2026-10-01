@@ -27,6 +27,7 @@ the next update.
 Start from a clean, reviewed commit. Then run:
 
 ```bash
+bash scripts/test_connection_state.sh
 ./scripts/build_release.sh
 ```
 
@@ -65,6 +66,11 @@ smoke test:
   any required approval opens System Settings → Login Items.
 - On macOS 27, Settings uses the native sidebar and unified toolbar appearance.
 - The menu bar uses the hand-tap gesture icon.
+- The touch-device indicator is connected when a recognized USB touch device
+  is present, including after app launch or refreshing the input pipeline.
+- Removing the final touch device shows "No touch device"; reconnecting it
+  restores the connected state without restarting the app. Display assignment
+  alone must not imply that a USB touch device is present.
 
 ## Publish
 

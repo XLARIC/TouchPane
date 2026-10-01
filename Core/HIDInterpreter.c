@@ -24,10 +24,52 @@ static CFRunLoopRef gRunLoopRef;
 
 static IOHIDManagerRef gHidManager;
 static IOHIDManagerRef gWingCoolManager;
+static CFMutableSetRef gConnectedTouchscreens;
 static CFRunLoopTimerRef gWingCoolRetryTimer;
 static Boolean gWingCoolOpened;
 static Boolean gWingCoolRequestedAccess;
 static int gWingCoolLastAccess = -1;
+
+CFIndex ConnectedTouchscreenCount(void) {
+    return gConnectedTouchscreens ? CFSetGetCount(gConnectedTouchscreens) : 0;
+}
+
+static Boolean TrackTouchscreen(IOHIDDeviceRef device) {
+    if (!device || !gConnectedTouchscreens || CFSetContainsValue(gConnectedTouchscreens, device)) return FALSE;
+    CFSetAddValue(gConnectedTouchscreens, device);
+    return TRUE;
+}
+
+static Boolean UntrackTouchscreen(IOHIDDeviceRef device) {
+    if (!device || !gConnectedTouchscreens || !CFSetContainsValue(gConnectedTouchscreens, device)) return FALSE;
+    CFSetRemoveValue(gConnectedTouchscreens, device);
+    return TRUE;
+}
+
+static Boolean IsWingCoolDevice(IOHIDDeviceRef device) {
+    CFTypeRef vendorValue = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDVendorIDKey));
+    CFTypeRef productValue = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDProductIDKey));
+    int vendor = 0, product = 0;
+    return vendorValue && productValue &&
+        CFGetTypeID(vendorValue) == CFNumberGetTypeID() &&
+        CFGetTypeID(productValue) == CFNumberGetTypeID() &&
+        CFNumberGetValue(vendorValue, kCFNumberIntType, &vendor) &&
+        CFNumberGetValue(productValue, kCFNumberIntType, &product) &&
+        vendor == 0x27c0 && product == 0x0858;
+}
+
+static void TrackEnumeratedTouchscreen(const void *value, void *context) {
+    IOHIDDeviceRef device = (IOHIDDeviceRef)value;
+    if (context == gWingCoolManager || !IsWingCoolDevice(device)) TrackTouchscreen(device);
+}
+
+static void TrackEnumeratedTouchscreens(IOHIDManagerRef manager) {
+    CFSetRef devices = IOHIDManagerCopyDevices(manager);
+    if (devices) {
+        CFSetApplyFunction(devices, TrackEnumeratedTouchscreen, manager);
+        CFRelease(devices);
+    }
+}
 
 static void WingCoolReport(void *context, IOReturn result, void *sender,
                            IOHIDReportType type, uint32_t reportID,
@@ -45,15 +87,19 @@ static void WingCoolReport(void *context, IOReturn result, void *sender,
 
 static void WingCoolConnected(void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
     fprintf(stderr, "WingCool mouse connected result=0x%x\n", result); fflush(stderr);
-    if (result == kIOReturnSuccess) TouchInputManagerDidConnectTouchscreen(context);
+    if (sender == gWingCoolManager && TrackTouchscreen(device)) TouchInputManagerDidConnectTouchscreen(context);
 }
 
 static void WingCoolRemoved(void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
-    TouchInputManagerDidDisconnectTouchscreen(context);
+    if (sender == gWingCoolManager && UntrackTouchscreen(device)) TouchInputManagerDidDisconnectTouchscreen(context);
 }
 
 static void WingCoolTryOpen(CFRunLoopTimerRef timer, void *delegate) {
     if (!gWingCoolManager || gWingCoolOpened || !TouchInputManagerCanPostMouseEvents(delegate)) return;
+    CFSetRef devices = IOHIDManagerCopyDevices(gWingCoolManager);
+    Boolean present = devices && CFSetGetCount(devices) > 0;
+    if (devices) CFRelease(devices);
+    if (!present) return;
     IOHIDAccessType access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
     if (access != kIOHIDAccessTypeGranted && !gWingCoolRequestedAccess) {
         gWingCoolRequestedAccess = TRUE;
@@ -67,7 +113,7 @@ static void WingCoolTryOpen(CFRunLoopTimerRef timer, void *delegate) {
     fprintf(stderr, "WingCool exclusive open=0x%x listen=%d\n", result, access); fflush(stderr);
 }
 
-static Boolean OpenWingCoolMouse(void *delegate) {
+static void OpenWingCoolMouse(void *delegate) {
     int vendor = 0x27c0, product = 0x0858, page = 1, usage = 2;
     const void *keys[] = {CFSTR(kIOHIDVendorIDKey), CFSTR(kIOHIDProductIDKey),
                           CFSTR(kIOHIDPrimaryUsagePageKey), CFSTR(kIOHIDPrimaryUsageKey)};
@@ -81,17 +127,12 @@ static Boolean OpenWingCoolMouse(void *delegate) {
     IOHIDManagerSetDeviceMatching(gWingCoolManager, match);
     CFRelease(match);
     for (int i = 0; i < 4; ++i) CFRelease(values[i]);
-    CFSetRef devices = IOHIDManagerCopyDevices(gWingCoolManager);
-    Boolean present = devices && CFSetGetCount(devices) > 0;
-    if (devices) CFRelease(devices);
-    if (!present) { CFRelease(gWingCoolManager); gWingCoolManager = NULL; return FALSE; }
-    fprintf(stderr, "WingCool absolute mouse detected; AX=%d listen=%d\n",
-            TouchInputManagerCanPostMouseEvents(delegate), IOHIDCheckAccess(kIOHIDRequestTypeListenEvent));
-    fflush(stderr);
     IOHIDManagerRegisterInputReportCallback(gWingCoolManager, WingCoolReport, delegate);
     IOHIDManagerRegisterDeviceMatchingCallback(gWingCoolManager, WingCoolConnected, delegate);
     IOHIDManagerRegisterDeviceRemovalCallback(gWingCoolManager, WingCoolRemoved, delegate);
     IOHIDManagerScheduleWithRunLoop(gWingCoolManager, CFRunLoopGetMain(), kCFRunLoopCommonModes);
+    // Keep watching even when the app starts before the USB touchscreen is attached.
+    TrackEnumeratedTouchscreens(gWingCoolManager);
     // Wait for the user's grants; activate automatically without requiring a restart.
     gWingCoolOpened = FALSE;
     gWingCoolRequestedAccess = FALSE;
@@ -101,7 +142,6 @@ static Boolean OpenWingCoolMouse(void *delegate) {
                                               WingCoolTryOpen, &timerContext);
     CFRunLoopAddTimer(CFRunLoopGetMain(), gWingCoolRetryTimer, kCFRunLoopCommonModes);
     WingCoolTryOpen(NULL, delegate);
-    return TRUE;
 }
 
 IOHIDQueueRef gQueue;
@@ -563,6 +603,8 @@ static void Handle_InputValueCallback (
                 void *          inSender,       // the IOHIDManagerRef
                 IOHIDValueRef   inIOHIDValueRef // the new element value
 ) {
+    if (inResult != kIOReturnSuccess || gQueue == NULL ||
+        IOHIDElementGetDevice(IOHIDValueGetElement(inIOHIDValueRef)) != IOHIDQueueGetDevice(gQueue)) return;
     if(!gAreElementRefsSet) {
         IOHIDElementRef e = IOHIDValueGetElement(inIOHIDValueRef);
         IdentifyElements(e, TRUE);
@@ -607,32 +649,41 @@ static void Handle_DeviceMatchingCallback(
             void *          inSender,        // the IOHIDManagerRef for the new device
             IOHIDDeviceRef  inIOHIDDeviceRef // the new HID device
 ) {
-    printf("%s(context: %p, result: %p, sender: %p, device: %p).\n",
-        __PRETTY_FUNCTION__, inContext, (void *) inResult, inSender, (void*) inIOHIDDeviceRef);
+    printf("%s(context: %p, result: 0x%x, sender: %p, device: %p).\n",
+        __PRETTY_FUNCTION__, inContext, inResult, inSender, (void*) inIOHIDDeviceRef);
    
-    gAreElementRefsSet = 0;
+    if (inSender != gHidManager || IsWingCoolDevice(inIOHIDDeviceRef)) return;
+    Boolean added = TrackTouchscreen(inIOHIDDeviceRef);
 
     // This interpreter currently supports a single active touchscreen queue.
     // If we already have one, ignore additional matching callbacks.
     if (gQueue != NULL) {
+        if (added) TouchInputManagerDidConnectTouchscreen(gTouchManager);
         return;
     }
     
     
     IOHIDQueueRef queue = IOHIDQueueCreate(kCFAllocatorDefault, inIOHIDDeviceRef, 1000, kNilOptions);
-    
-    if (CFGetTypeID(queue) != IOHIDQueueGetTypeID()) {
-        // this is not a valid HID queue reference!
+    if (queue == NULL) {
+        if (added) TouchInputManagerDidConnectTouchscreen(gTouchManager);
+        return;
     }
     
     // Retain an empty queue as the active-device sentinel used by the existing
     // single-touchscreen lifecycle. Input values themselves are handled by
     // Handle_InputValueCallback above.
     gQueue = queue;
+    gAreElementRefsSet = 0;
     
-    TouchInputManagerDidConnectTouchscreen(gTouchManager);
+    if (added) TouchInputManagerDidConnectTouchscreen(gTouchManager);
     
 }   // Handle_DeviceMatchingCallback
+
+static void SelectRemainingTouchscreen(const void *device, void *context) {
+    if (gQueue == NULL) {
+        Handle_DeviceMatchingCallback(NULL, kIOReturnSuccess, gHidManager, (IOHIDDeviceRef)device);
+    }
+}
  
 
 
@@ -643,22 +694,20 @@ static void Handle_RemovalCallback(
                 void *         inSender,        // the IOHIDManagerRef for the device being removed
                 IOHIDDeviceRef inIOHIDDeviceRef // the removed HID device
 ) {
-    printf("%s(context: %p, result: %p, sender: %p, device: %p).\n",
-        __PRETTY_FUNCTION__, inContext, (void *) inResult, inSender, (void*) inIOHIDDeviceRef);
-    if (gQueue != NULL) {
+    printf("%s(context: %p, result: 0x%x, sender: %p, device: %p).\n",
+        __PRETTY_FUNCTION__, inContext, inResult, inSender, (void*) inIOHIDDeviceRef);
+    if (inSender != gHidManager || !UntrackTouchscreen(inIOHIDDeviceRef)) return;
+    // An unrelated interface's removal must not tear down the active input queue.
+    if (gQueue != NULL && IOHIDQueueGetDevice(gQueue) == inIOHIDDeviceRef) {
         IOHIDQueueStop(gQueue);
         CFRelease(gQueue);
         gQueue = NULL;
-    }
-    
-    if (gTouchCollectionElements != NULL) {
-        CFArrayRemoveAllValues(gTouchCollectionElements);
-    }
-    if (gContactIdentifiers != NULL) {
-        CFArrayRemoveAllValues(gContactIdentifiers);
-    }
-    if (gStoredInputValues != NULL) {
-        CFDictionaryRemoveAllValues(gStoredInputValues);
+        gAreElementRefsSet = 0;
+        ++gInputValueGeneration;
+        if (gTouchCollectionElements != NULL) CFArrayRemoveAllValues(gTouchCollectionElements);
+        if (gContactIdentifiers != NULL) CFArrayRemoveAllValues(gContactIdentifiers);
+        if (gStoredInputValues != NULL) CFDictionaryRemoveAllValues(gStoredInputValues);
+        CFSetApplyFunction(gConnectedTouchscreens, SelectRemainingTouchscreen, NULL);
     }
     
     TouchInputManagerDidDisconnectTouchscreen(gTouchManager);
@@ -711,13 +760,13 @@ static CFMutableDictionaryRef CreateDeviceMatchingDictionary(UInt32 inUsagePage,
 
 
 void OpenHIDManager(void *delegate) {
-    gTouchManager = delegate;
-    
     // If Open is called twice within one process, make sure we start clean.
     if (gHidManager != NULL || gWingCoolManager != NULL) {
         CloseHIDManager();
     }
-    if (OpenWingCoolMouse(delegate)) return;
+    gTouchManager = delegate;
+    gConnectedTouchscreens = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
+    OpenWingCoolMouse(delegate);
     
     gHidManager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
     
@@ -762,6 +811,7 @@ void OpenHIDManager(void *delegate) {
     if (openRes != kIOReturnSuccess) {
         fprintf(stderr, "%s: IOHIDManagerOpen failed: 0x%x\n", __PRETTY_FUNCTION__, openRes);
     }
+    TrackEnumeratedTouchscreens(gHidManager);
 
     // Some systems don't reliably invoke the matching callback for already-attached devices
     // at app start. Force an enumeration pass and initialize the queue immediately.
@@ -827,6 +877,14 @@ void CloseHIDManager(void) {
         CFRelease(gStoredInputValues);
         gStoredInputValues = NULL;
     }
+
+    if (gConnectedTouchscreens != NULL) {
+        CFRelease(gConnectedTouchscreens);
+        gConnectedTouchscreens = NULL;
+    }
+    gWingCoolOpened = FALSE;
+    gWingCoolRequestedAccess = FALSE;
+    gWingCoolLastAccess = -1;
 
     gAreElementRefsSet = 0;
     ++gInputValueGeneration; // invalidate any pending coalesced dispatch block

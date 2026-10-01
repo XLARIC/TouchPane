@@ -12,7 +12,7 @@ TouchPane 會把 USB HID 觸控輸入轉換為游標移動、點按、捲動、�
 
 ## TouchPane 新增與修復
 
-TouchPane 1.3.1 包含以下修改和新增內容：
+TouchPane 1.3.2 包含以下修改和新增內容：
 
 - 新增 WingCool/ASM-156UCT 絕對座標滑鼠 HID 支援，對應 USB 裝置
   `VID 27c0`、`PID 0858`。
@@ -33,6 +33,9 @@ TouchPane 1.3.1 包含以下修改和新增內容：
 - 新增固定自簽名憑證的建置及安裝流程，讓相同身分的後續版本盡量保留
   macOS 的「輔助使用」和「輸入監控」權限。
 - 新增 HID、觸控、手勢、動作和權限狀態的即時診斷。
+- 修復連線指示：現在依據實際的 USB 觸控裝置顯示狀態，與顯示器綁定分開判斷，
+  並正確處理啟動偵測、拔除及重新連線。診斷頁也會顯示辨識到的觸控輸入介面數量。
+  裝置已連線仍須正確選擇顯示器並授予權限，觸控輸出才能正常運作。
 - 改進觸控離開判斷、雜訊容錯、手勢辨識、可設定快速鍵動作和懸浮鍵盤流程。
 - 應用程式名稱及 Bundle ID 由 TouchMyMac 改為 TouchPane。
 
@@ -78,7 +81,7 @@ TouchPane 1.3.1 包含以下修改和新增內容：
 
 ### 如果顯示「Apple 無法驗證 DMG」
 
-你可能會看到「Apple 無法驗證 `TouchPane-1.3.1-macOS-universal.dmg`
+你可能會看到「Apple 無法驗證 `TouchPane-1.3.2-macOS-universal.dmg`
 是否包含可能危害 Mac 安全或洩漏隱私的惡意軟體」，而視窗中只有
 **完成**和**丟到垃圾桶**。這是目前自簽名版本預期會出現的提示，但只有在確認
 檔案來自本儲存庫且 SHA-256 驗證一致後才應繼續：
@@ -111,7 +114,7 @@ Apple 說明，「仍要打開」按鈕通常只會在嘗試開啟後約一小�
 
 ```bash
 cd ~/Downloads
-shasum -a 256 -c TouchPane-1.3.1-macOS-universal.dmg.sha256
+shasum -a 256 -c TouchPane-1.3.2-macOS-universal.dmg.sha256
 ```
 
 ## 從原始碼建置

@@ -92,6 +92,9 @@ static const CGFloat kFiveFingerHoldMaxTravelMM = 12.0f;
 //    [NSThread detachNewThreadWithBlock:^{
 //        [NSThread setThreadPriority:1];
         OpenHIDManager((__bridge void *)(weakSelf));
+        if ([self.delegate respondsToSelector:@selector(touchscreenConnectionDidChange)]) {
+            [self.delegate touchscreenConnectionDidChange];
+        }
 //    }];
 
     if (self.touchInactivityTimer == nil) {
@@ -108,6 +111,9 @@ static const CGFloat kFiveFingerHoldMaxTravelMM = 12.0f;
 - (void)stop {
     [self handleAbsoluteMouseAt:self.absoluteMouseLocation buttons:0 wheel:0 normalized:NO];
     CloseHIDManager();
+    if ([self.delegate respondsToSelector:@selector(touchscreenConnectionDidChange)]) {
+        [self.delegate touchscreenConnectionDidChange];
+    }
     if (self.touchInactivityTimer != nil) {
         [self.touchInactivityTimer invalidate];
         self.touchInactivityTimer = nil;
@@ -121,6 +127,10 @@ static const CGFloat kFiveFingerHoldMaxTravelMM = 12.0f;
 
 - (void)didDisconnectTouchscreen {
     [self.delegate touchscreenDidDisconnect];
+}
+
+- (NSInteger)connectedTouchscreenCount {
+    return ConnectedTouchscreenCount();
 }
 
 

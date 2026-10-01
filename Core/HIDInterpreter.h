@@ -9,9 +9,12 @@
 #define HIDInterpreter_h
 
 #include <stdio.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 void OpenHIDManager(void *delegate);
 
 void CloseHIDManager(void);
+
+CFIndex ConnectedTouchscreenCount(void);
 
 #endif /* HIDInterpreter_h */

@@ -16,6 +16,9 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Verify touch device connection lifecycle
+        run: bash scripts/test_connection_state.sh
+
       - name: Build unsigned app
         run: |
           xcodebuild \

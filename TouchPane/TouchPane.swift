@@ -72,7 +72,8 @@ class TouchPane: NSObject, ObservableObject {
     
     @Published var isPublishingMouseEventsEnabled = true
     
-    @Published var connectionState: ConnectionState = .disconnected
+    @Published private(set) var connectionState: ConnectionState = .uncertain
+    @Published private(set) var connectedTouchscreenCount = 0
     
     
     
@@ -98,7 +99,7 @@ class TouchPane: NSObject, ObservableObject {
     
     
     @Published var connectedScreens = [TUCScreen]()
-    var connectedTouchscreen: TUCScreen?
+    @Published var connectedTouchscreen: TUCScreen?
     
     var lastDateUSBAdded: Date?
     var lastDateScreenAdded: Date?
@@ -276,6 +277,17 @@ class TouchPane: NSObject, ObservableObject {
     }
     
     // MARK: - Attempt to automatically determine touch screen
+
+    func refreshConnectionState() {
+        connectedTouchscreenCount = Int(touchManager.connectedTouchscreenCount)
+        connectionState = connectedTouchscreenCount > 0 ? .connected : .disconnected
+    }
+
+    private var hasPreferredScreenAssignment: Bool {
+        guard let screen = connectedTouchscreen else { return false }
+        let cues = identificationCues
+        return screen.matching(name: cues.name, id: cues.id) == 1
+    }
     
     
     
@@ -305,7 +317,6 @@ class TouchPane: NSObject, ObservableObject {
         
         if connectedScreens.count == 0 {
             self.connectedTouchscreen = nil
-            self.connectionState = .uncertain
             print("OH NO SCREEN")
             return true
         }
@@ -314,7 +325,6 @@ class TouchPane: NSObject, ObservableObject {
         
         if let perfectMatch = connectedScreens.first(where: { $0.matching(name: cues.name, id: cues.id) == 1}) {
             self.connectedTouchscreen = perfectMatch
-            self.connectionState = lastDateUSBAdded == nil ? .connectedPreferred : .connectedHotPlug
             print("PREFERRED SCREEN FOUND")
             return true
         }
@@ -326,8 +336,8 @@ class TouchPane: NSObject, ObservableObject {
     @discardableResult func identifyHotPlug() -> Bool {
         // if the USB cable of a touch screen was plugged in within last 10 seconds, assign this to the touchscreen
         
-        // no need to hot plug during existing connection
-        if self.connectionState.isConnected {
+        // A confirmed display assignment is independent of USB device presence.
+        if hasPreferredScreenAssignment {
             print("HOTPLUG SKIPPED")
             return false
         }
@@ -339,9 +349,6 @@ class TouchPane: NSObject, ObservableObject {
                 
                 if let screen = self.connectedScreens.first(where: {$0.id == idOfLastAddedScreen}) {
                     self.connectedTouchscreen = screen
-                    let cues = identificationCues
-                    let match = screen.matching(name: cues.name, id: cues.id)
-                    self.connectionState = match == 1 ? .connectedPreferred : .connectedHotPlug
                     print("HOTPLUG SUCCESS")
                     return true
                 }
@@ -874,15 +881,10 @@ extension TouchPane: TUCTouchDelegate {
         performUIUpdate {
             self.hidConnectCount += 1
             self.addDiagnosticsEvent("Touchscreen HID connected")
-            self.lastDateScreenAdded = Date()
-            
-            if !self.identifyHotPlug() {
-                if self.connectionState.isConnected {
-                    self.connectionState = .uncertain
-                }
-            }
-            
+            self.lastDateUSBAdded = Date()
+            self.identifyHotPlug()
             self.identifyPreferredOrNoScreen()
+            self.refreshConnectionState()
         }
     }
     
@@ -890,7 +892,13 @@ extension TouchPane: TUCTouchDelegate {
         performUIUpdate {
             self.hidDisconnectCount += 1
             self.addDiagnosticsEvent("Touchscreen HID disconnected")
-            self.connectionState = .disconnected
+            self.refreshConnectionState()
+        }
+    }
+
+    func touchscreenConnectionDidChange() {
+        performUIUpdate {
+            self.refreshConnectionState()
         }
     }
 
@@ -986,8 +994,7 @@ extension TouchPane {
 enum ConnectionState: Int {
     case uncertain
     case disconnected
-    case connectedHotPlug // connected as result from hot plugging within a few seconds
-    case connectedPreferred // connected with stored cues matching perfectly
+    case connected
     
     var image: NSImage? {
         Self.menuBarImage
@@ -1020,7 +1027,7 @@ enum ConnectionState: Int {
     }()
     
     var isConnected: Bool {
-        return self == .connectedPreferred || self == .connectedHotPlug
+        return self == .connected
     }
 }
                  

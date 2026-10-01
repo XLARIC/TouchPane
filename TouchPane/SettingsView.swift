@@ -127,9 +127,8 @@ struct SettingsView: View {
     private var connectionStateText: String {
         switch model.connectionState {
         case .uncertain: return model.text("Checking", "检查中")
-        case .disconnected: return model.text("Disconnected", "未连接")
-        case .connectedHotPlug: return model.text("Connected", "已连接")
-        case .connectedPreferred: return model.text("Connected (preferred)", "已连接（首选）")
+        case .disconnected: return model.text("No touch device", "未连接触摸设备")
+        case .connected: return model.text("Touch device connected", "触摸设备已连接")
         }
     }
 
@@ -206,6 +205,7 @@ struct SettingsView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial)
+        .help(model.text("USB touch device connection. Choose the assigned display in General.", "触摸设备的 USB 连接状态。可在“通用”中选择对应的显示器。"))
     }
 
     private var detailPane: some View {
@@ -353,7 +353,7 @@ struct SettingsView: View {
                 sectionDivider
                 settingValueRow(model.text("Input Publishing", "输入输出"), value: model.isPublishingMouseEventsEnabled ? model.text("Enabled", "已启用") : model.text("Disabled", "已停用"))
                 sectionDivider
-                settingValueRow(model.text("Connection", "连接"), value: connectionStateText)
+                settingValueRow(model.text("Touch Device", "触摸设备"), value: connectionStateText)
                 sectionDivider
                 settingValueRow(model.text("Assigned Screen", "指定显示器"), value: model.connectedTouchscreen?.name ?? model.text("(Auto)", "（自动）"))
             }
@@ -491,7 +491,8 @@ struct SettingsView: View {
                 diagnosticsTextLine(model.text("Accessibility (Cached)", "辅助功能（缓存）"), model.isAccessibilityAccessGranted ? model.text("Granted", "已授权") : model.text("Missing", "未授权"))
                 diagnosticsTextLine(model.text("Accessibility (Live)", "辅助功能（实时）"), model.accessibilityTrustedNow ? model.text("Granted", "已授权") : model.text("Missing", "未授权"))
                 diagnosticsTextLine(model.text("Input Enabled", "输入已启用"), model.isPublishingMouseEventsEnabled ? model.text("Yes", "是") : model.text("No", "否"))
-                diagnosticsTextLine(model.text("Connection", "连接"), connectionStateText)
+                diagnosticsTextLine(model.text("Touch Device", "触摸设备"), connectionStateText)
+                diagnosticsTextLine(model.text("Touch Input Interfaces", "触摸输入接口"), "\(model.connectedTouchscreenCount)")
                 diagnosticsTextLine(model.text("Connected Screens", "已连接显示器"), "\(model.connectedScreens.count)")
                 diagnosticsTextLine(model.text("Assigned Screen", "指定显示器"), model.connectedTouchscreen?.name ?? model.text("(Auto)", "（自动）"))
                 diagnosticsTextLine(model.text("Touch Reports", "触摸报告"), "\(model.touchUpdateCount)")

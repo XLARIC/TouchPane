@@ -28,6 +28,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)touchscreenDidConnect;
 - (void)touchscreenDidDisconnect;
+@optional
+- (void)touchscreenConnectionDidChange;
+@required
 
 
 

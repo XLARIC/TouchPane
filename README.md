@@ -13,7 +13,7 @@ Hueber.
 
 ## What This Fork Adds
 
-TouchPane 1.3.1 contains the following changes and additions:
+TouchPane 1.3.2 contains the following changes and additions:
 
 - Added WingCool/ASM-156UCT absolute-mouse HID support for USB device
   `VID 27c0`, `PID 0858`.
@@ -39,6 +39,11 @@ TouchPane 1.3.1 contains the following changes and additions:
 - Added a stable self-signed build and installation workflow to help macOS keep
   Accessibility and Input Monitoring permissions across matching upgrades.
 - Added live HID, touch, gesture, action, and permission diagnostics.
+- Fixed the connection indicator to reflect actual USB touch-device presence,
+  independently of display assignment, including startup detection and device
+  removal/reconnection. Diagnostics also shows the recognized touch-interface
+  count. A connected device still requires the correct display and permissions
+  for touch output to work.
 - Improved touch liftoff handling, noisy-panel tolerance, gesture recognition,
   configurable shortcut actions, and the floating keyboard workflow.
 - Renamed the application and bundle identifiers from TouchMyMac to TouchPane.
@@ -88,7 +93,7 @@ It is **not Apple-notarized**, so macOS will not trust it automatically.
 ### If macOS says it cannot verify the DMG
 
 You may see an alert saying Apple cannot verify
-`TouchPane-1.3.1-macOS-universal.dmg` for malicious software, with only
+`TouchPane-1.3.2-macOS-universal.dmg` for malicious software, with only
 **Done** and **Move to Trash** buttons. This is expected for the current
 self-signed release, but only continue if you downloaded it from this
 repository and its SHA-256 checksum matches:
@@ -126,7 +131,7 @@ Verify a release from Terminal:
 
 ```bash
 cd ~/Downloads
-shasum -a 256 -c TouchPane-1.3.1-macOS-universal.dmg.sha256
+shasum -a 256 -c TouchPane-1.3.2-macOS-universal.dmg.sha256
 ```
 
 ## Build from Source

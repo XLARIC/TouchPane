@@ -104,6 +104,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (readonly) CGFloat debugThreeFingerVerticalTravelMM;
 @property (readonly) CGFloat debugThreeFingerHorizontalTravelMM;
 
+/** Number of recognized USB touch input interfaces, independent of screen assignment. */
+@property (readonly) NSInteger connectedTouchscreenCount;
+
 
 - (void)start;
 
